@@ -1,0 +1,187 @@
+import http from "k6/http";
+import { check, sleep } from "k6";
+import { Rate, Trend } from "k6/metrics";
+
+// Custom metrics
+const errorRate = new Rate("errors");
+const createProfileTrend = new Trend("create_profile_duration");
+const getProfileTrend = new Trend("get_profile_duration");
+const listProfilesTrend = new Trend("list_profiles_duration");
+const updateProfileTrend = new Trend("update_profile_duration");
+const deleteProfileTrend = new Trend("delete_profile_duration");
+const authTrend = new Trend("auth_duration");
+
+// Test configuration
+export const options = {
+  stages: [
+    { duration: "30s", target: 20 }, // Ramp up to 20 users
+    { duration: "1m", target: 20 }, // Stay at 20 users
+    { duration: "30s", target: 0 }, // Ramp down to 0 users
+  ],
+  thresholds: {
+    http_req_duration: ["p(95)<500"], // 95% of requests should be below 500ms
+    errors: ["rate<0.01"], // Less than 1% of requests should fail
+  },
+};
+
+// Test data
+const BASE_URL = __ENV.BASE_URL || "http://profile-api";
+const AUTH_URL = __ENV.AUTH_URL || "http://profile-auth";
+const TEST_USER = {
+  first_name: "Test",
+  last_name: "User",
+  email: `test${__VU}@example.com`,
+  phone: "+1234567890",
+};
+
+// Helper function to generate random email
+function generateRandomEmail() {
+  return `test${__VU}_${Date.now()}@example.com`;
+}
+
+// Helper function to get authentication token from profile-api
+function getAuthToken() {
+  const loginPayload = JSON.stringify({
+    user_id: TEST_USER.email, // Using email as user_id for testing
+    password: "test123", // Using a default password for testing
+  });
+
+  const loginResponse = http.post(
+    `${BASE_URL}/api/v1/auth/token`,
+    loginPayload,
+    {
+      headers: { "Content-Type": "application/json" },
+    }
+  );
+  authTrend.add(loginResponse.timings.duration);
+
+  check(loginResponse, {
+    "login status is 200": (r) => r.status === 200,
+    "login returns token": (r) => r.json().token !== undefined,
+  }) || errorRate.add(1);
+
+  if (loginResponse.status !== 200) {
+    console.error("Failed to get authentication token:", loginResponse.body);
+    return null;
+  }
+
+  return loginResponse.json().token;
+}
+
+// Main test function
+export default function () {
+  // Get authentication token
+  const token = getAuthToken();
+  if (!token) {
+    console.error("Failed to get authentication token");
+    return;
+  }
+
+  const headers = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${token}`,
+  };
+
+  // Test List Profiles
+  const listResponse = http.get(`${BASE_URL}/api/v1/profiles`, { headers });
+  listProfilesTrend.add(listResponse.timings.duration);
+  check(listResponse, {
+    "list profiles status is 200": (r) => r.status === 200,
+    "list profiles returns array": (r) => Array.isArray(r.json()),
+  }) || errorRate.add(1);
+
+  sleep(1);
+
+  // Test Create Profile
+  const createPayload = JSON.stringify({
+    ...TEST_USER,
+    email: generateRandomEmail(), // Ensure unique email
+  });
+
+  const createResponse = http.post(
+    `${BASE_URL}/api/v1/profiles`,
+    createPayload,
+    { headers }
+  );
+  createProfileTrend.add(createResponse.timings.duration);
+
+  check(createResponse, {
+    "create profile status is 201": (r) => r.status === 201,
+    "create profile has id": (r) => r.json().id !== undefined,
+  }) || errorRate.add(1);
+
+  // If profile creation was successful, test other operations
+  if (createResponse.status === 201) {
+    const profileId = createResponse.json().id;
+
+    // Test Get Profile
+    const getResponse = http.get(`${BASE_URL}/api/v1/profiles/${profileId}`, {
+      headers,
+    });
+    getProfileTrend.add(getResponse.timings.duration);
+
+    check(getResponse, {
+      "get profile status is 200": (r) => r.status === 200,
+      "get profile has correct data": (r) => r.json().id === profileId,
+    }) || errorRate.add(1);
+
+    sleep(1);
+
+    // Test Update Profile
+    const updatePayload = JSON.stringify({
+      ...TEST_USER,
+      first_name: "Updated",
+      email: generateRandomEmail(), // Ensure unique email
+    });
+
+    const updateResponse = http.put(
+      `${BASE_URL}/api/v1/profiles/${profileId}`,
+      updatePayload,
+      { headers }
+    );
+    updateProfileTrend.add(updateResponse.timings.duration);
+
+    check(updateResponse, {
+      "update profile status is 200": (r) => r.status === 200,
+      "update profile has updated data": (r) =>
+        r.json().first_name === "Updated",
+    }) || errorRate.add(1);
+
+    sleep(1);
+
+    // Test Delete Profile
+    const deleteResponse = http.del(
+      `${BASE_URL}/api/v1/profiles/${profileId}`,
+      null,
+      { headers }
+    );
+    deleteProfileTrend.add(deleteResponse.timings.duration);
+
+    check(deleteResponse, {
+      "delete profile status is 204": (r) => r.status === 204,
+    }) || errorRate.add(1);
+  }
+
+  // Test unauthorized access
+  const unauthorizedHeaders = {
+    "Content-Type": "application/json",
+    Authorization: "Bearer invalid_token",
+  };
+
+  const unauthorizedResponse = http.get(`${BASE_URL}/api/v1/profiles`, {
+    headers: unauthorizedHeaders,
+  });
+  check(unauthorizedResponse, {
+    "unauthorized access returns 401": (r) => r.status === 401,
+  }) || errorRate.add(1);
+
+  sleep(1);
+}
+
+// Handle test completion
+export function handleSummary(data) {
+  return {
+    stdout: textSummary(data, { indent: " ", enableColors: true }),
+    "summary.json": JSON.stringify(data),
+  };
+}

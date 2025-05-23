@@ -1,0 +1,430 @@
+{
+  "info": {
+    "name": "Events API",
+    "description": "Collection for interacting with the Events API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Event Publishing",
+      "item": [
+        {
+          "name": "Publish Event",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"event_type\": \"{{event_type}}\",\n  \"data\": {\n    \"key\": \"value\",\n    \"timestamp\": \"{{timestamp}}\"\n  },\n  \"metadata\": {\n    \"source\": \"{{source}}\",\n    \"version\": \"{{version}}\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/events",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "events"]
+            }
+          }
+        },
+        {
+          "name": "Publish Batch Events",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"events\": [\n    {\n      \"event_type\": \"{{event_type_1}}\",\n      \"data\": {\n        \"key1\": \"value1\"\n      }\n    },\n    {\n      \"event_type\": \"{{event_type_2}}\",\n      \"data\": {\n        \"key2\": \"value2\"\n      }\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/events/batch",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "events", "batch"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Event Subscription",
+      "item": [
+        {
+          "name": "Create Subscription",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{subscription_name}}\",\n  \"event_types\": [\"{{event_type_1}}\", \"{{event_type_2}}\"],\n  \"endpoint\": \"{{webhook_url}}\",\n  \"filter\": \"{{filter_expression}}\",\n  \"retry_policy\": {\n    \"max_retries\": {{max_retries}},\n    \"backoff\": \"{{backoff_strategy}}\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/subscriptions",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "subscriptions"]
+            }
+          }
+        },
+        {
+          "name": "List Subscriptions",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/subscriptions",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "subscriptions"]
+            }
+          }
+        },
+        {
+          "name": "Get Subscription",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/subscriptions/{{subscription_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "subscriptions", "{{subscription_id}}"]
+            }
+          }
+        },
+        {
+          "name": "Update Subscription",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"event_types\": [\"{{event_type_1}}\", \"{{event_type_2}}\"],\n  \"filter\": \"{{filter_expression}}\",\n  \"retry_policy\": {\n    \"max_retries\": {{max_retries}}\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/subscriptions/{{subscription_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "subscriptions", "{{subscription_id}}"]
+            }
+          }
+        },
+        {
+          "name": "Delete Subscription",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/subscriptions/{{subscription_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "subscriptions", "{{subscription_id}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Event History",
+      "item": [
+        {
+          "name": "Get Event History",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/events/history?event_type={{event_type}}&start={{start_time}}&end={{end_time}}&limit={{limit}}",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "events", "history"],
+              "query": [
+                {
+                  "key": "event_type",
+                  "value": "{{event_type}}"
+                },
+                {
+                  "key": "start",
+                  "value": "{{start_time}}"
+                },
+                {
+                  "key": "end",
+                  "value": "{{end_time}}"
+                },
+                {
+                  "key": "limit",
+                  "value": "{{limit}}"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Search Events",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"{{search_query}}\",\n  \"start_time\": \"{{start_time}}\",\n  \"end_time\": \"{{end_time}}\",\n  \"limit\": {{limit}}\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/events/search",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "events", "search"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Event Statistics",
+      "item": [
+        {
+          "name": "Get Event Statistics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/events/stats?start={{start_time}}&end={{end_time}}&interval={{interval}}",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "events", "stats"],
+              "query": [
+                {
+                  "key": "start",
+                  "value": "{{start_time}}"
+                },
+                {
+                  "key": "end",
+                  "value": "{{end_time}}"
+                },
+                {
+                  "key": "interval",
+                  "value": "{{interval}}"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Event Type Statistics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/events/stats/types?start={{start_time}}&end={{end_time}}",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "events", "stats", "types"],
+              "query": [
+                {
+                  "key": "start",
+                  "value": "{{start_time}}"
+                },
+                {
+                  "key": "end",
+                  "value": "{{end_time}}"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "if (!pm.request.headers.has('X-Request-ID')) {",
+          "    pm.request.headers.add({",
+          "        key: 'X-Request-ID',",
+          "        value: pm.variables.replaceIn('{{$guid}}')",
+          "    });",
+          "}"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "pm.test('Status code is 200', function () {",
+          "    pm.response.to.have.status(200);",
+          "});",
+          "",
+          "pm.test('Response time is less than 200ms', function () {",
+          "    pm.expect(pm.response.responseTime).to.be.below(200);",
+          "});",
+          "",
+          "pm.test('Response is JSON', function () {",
+          "    pm.response.to.be.json;",
+          "});"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "https://events.profileservice.com",
+      "type": "string"
+    },
+    {
+      "key": "api_key",
+      "value": "your-api-key",
+      "type": "string"
+    },
+    {
+      "key": "event_type",
+      "value": "profile.created",
+      "type": "string"
+    },
+    {
+      "key": "event_type_1",
+      "value": "profile.created",
+      "type": "string"
+    },
+    {
+      "key": "event_type_2",
+      "value": "profile.updated",
+      "type": "string"
+    },
+    {
+      "key": "timestamp",
+      "value": "2024-03-20T00:00:00Z",
+      "type": "string"
+    },
+    {
+      "key": "source",
+      "value": "profile-service",
+      "type": "string"
+    },
+    {
+      "key": "version",
+      "value": "1.0",
+      "type": "string"
+    },
+    {
+      "key": "subscription_name",
+      "value": "profile-events",
+      "type": "string"
+    },
+    {
+      "key": "webhook_url",
+      "value": "https://your-service.com/webhook",
+      "type": "string"
+    },
+    {
+      "key": "filter_expression",
+      "value": "data.user_id = '123'",
+      "type": "string"
+    },
+    {
+      "key": "max_retries",
+      "value": "3",
+      "type": "string"
+    },
+    {
+      "key": "backoff_strategy",
+      "value": "exponential",
+      "type": "string"
+    },
+    {
+      "key": "subscription_id",
+      "value": "sub-123",
+      "type": "string"
+    },
+    {
+      "key": "start_time",
+      "value": "2024-03-19T00:00:00Z",
+      "type": "string"
+    },
+    {
+      "key": "end_time",
+      "value": "2024-03-20T00:00:00Z",
+      "type": "string"
+    },
+    {
+      "key": "limit",
+      "value": "100",
+      "type": "string"
+    },
+    {
+      "key": "search_query",
+      "value": "event_type:profile.created AND data.user_id:123",
+      "type": "string"
+    },
+    {
+      "key": "interval",
+      "value": "1h",
+      "type": "string"
+    }
+  ]
+}

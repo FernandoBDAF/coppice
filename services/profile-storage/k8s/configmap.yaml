@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: profile-storage-config
+data:
+  DB_HOST: "postgres"
+  DB_NAME: "profile_storage"
+  DB_PORT: "5432"
+  DB_USER: "profile_user"
+  DB_PASSWORD: "profile_password"
+  GRPC_PORT: "50051"
+  REST_PORT: "8080"
+  LOG_LEVEL: "info"
+  TRANSACTION_TIMEOUT: "30s"
+  MAX_CONNECTIONS: "100"
+  MIN_CONNECTIONS: "10"
+  CONNECTION_TIMEOUT: "5s"
+  IDLE_TIMEOUT: "300s"
+  MAX_LIFETIME: "3600s"

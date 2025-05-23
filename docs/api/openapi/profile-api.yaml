@@ -1,0 +1,310 @@
+openapi: 3.0.3
+info:
+  title: Profile Service API
+  description: |
+    API Gateway for the Profile Service Microservices architecture.
+    This API provides endpoints for managing user profiles and monitoring.
+  version: 1.0.0
+  contact:
+    name: API Support
+    email: support@profileservice.com
+
+servers:
+  - url: https://api.profileservice.com/v1
+    description: Production server
+  - url: https://staging-api.profileservice.com/v1
+    description: Staging server
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token for API authentication
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: API key for service-to-service authentication
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error message
+
+    Profile:
+      type: object
+      required:
+        - id
+        - name
+        - email
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier for the profile
+        name:
+          type: string
+          description: User's name
+        email:
+          type: string
+          format: email
+          description: User's email address
+        bio:
+          type: string
+          description: User's biography
+        image_urls:
+          type: array
+          items:
+            type: string
+          description: URLs of user's profile images
+        created_at:
+          type: string
+          format: date-time
+          description: Profile creation timestamp
+        updated_at:
+          type: string
+          format: date-time
+          description: Profile last update timestamp
+        get_from:
+          type: string
+          description: Source of the profile data
+
+    CreateProfileRequest:
+      type: object
+      required:
+        - name
+        - email
+      properties:
+        name:
+          type: string
+          description: User's name
+        email:
+          type: string
+          format: email
+          description: User's email address
+        bio:
+          type: string
+          description: User's biography
+
+    UpdateProfileRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          description: User's name
+        email:
+          type: string
+          format: email
+          description: User's email address
+        bio:
+          type: string
+          description: User's biography
+
+    ProfileResponse:
+      type: object
+      properties:
+        profile:
+          $ref: "#/components/schemas/Profile"
+        source:
+          type: string
+          description: Source of the profile data
+
+    DelayedTask:
+      type: object
+      required:
+        - id
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Task identifier
+        created_at:
+          type: string
+          format: date-time
+          description: Task creation timestamp
+
+paths:
+  /profiles:
+    get:
+      summary: List profiles
+      description: Retrieve a list of all profiles
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: List of profiles
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Profile"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+
+    post:
+      summary: Create profile
+      description: Create a new user profile
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProfileRequest"
+      responses:
+        "201":
+          description: Profile created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Profile"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+
+  /profiles/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Profile ID
+
+    get:
+      summary: Get profile
+      description: Retrieve a specific profile by ID
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Profile details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProfileResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+    put:
+      summary: Update profile
+      description: Update an existing profile
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProfileRequest"
+      responses:
+        "200":
+          description: Profile updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Profile"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+    delete:
+      summary: Delete profile
+      description: Delete a profile
+      security:
+        - BearerAuth: []
+      responses:
+        "204":
+          description: Profile deleted successfully
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /profiles/random:
+    post:
+      summary: Generate random profile
+      description: Generate and create a random profile
+      security:
+        - BearerAuth: []
+      responses:
+        "201":
+          description: Random profile created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Profile"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+
+  /profiles/tasks:
+    post:
+      summary: Process delayed task
+      description: Process a delayed task for profile operations
+      security:
+        - BearerAuth: []
+      responses:
+        "202":
+          description: Task accepted for processing
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  taskID:
+                    type: string
+                    format: uuid
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+
+  /health:
+    get:
+      summary: Health check
+      description: Check the health status of the API
+      security:
+        - ApiKeyAuth: []
+      responses:
+        "200":
+          description: API is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [healthy, degraded]
+                  version:
+                    type: string
+                  timestamp:
+                    type: string
+                    format: date-time
