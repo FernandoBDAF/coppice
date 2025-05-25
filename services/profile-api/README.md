@@ -329,7 +329,7 @@ profile-api/
 
    ```bash
    # Request a new authentication token
-   curl -X POST http://profile-api/api/v1/auth/token \
+   curl -X POST http://profile-api/api/v1/auth/token
      -H "Content-Type: application/json" \
      -d '{
        "user_id": "user1",

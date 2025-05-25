@@ -50,6 +50,11 @@ The Profile Service Microservices architecture is a distributed system designed 
      - Error handling
      - Structured logging with Zap logger
      - Prometheus metrics integration
+     - Service replication (2 replicas)
+     - Proper error handling for invalid IDs
+     - UUID v4 for profile IDs
+     - ISO 8601 timestamp format
+     - Health check response times < 1ms
 
 2. **Auth Service** (`/services/auth`)
 
@@ -65,6 +70,10 @@ The Profile Service Microservices architecture is a distributed system designed 
      - Role management
      - Clerk integration (in progress)
      - Backward compatibility layer
+     - Service replication (2 replicas)
+     - Mock token implementation for testing
+     - Token validation endpoints
+     - Health check response times < 1ms
 
 3. **Profile Storage Service** (`/services/profile-storage`)
    - Manages data persistence and database operations
@@ -73,11 +82,16 @@ The Profile Service Microservices architecture is a distributed system designed 
    - Status: In Progress
    - Key Features:
      - gRPC API for internal communication
+     - REST API implementation
      - PostgreSQL integration with connection pooling
      - Health monitoring with Prometheus metrics
      - Kubernetes deployment with ConfigMaps and Secrets
      - Docker containerization with multi-stage builds
      - Structured logging with Zap logger
+     - Service replication (2 replicas)
+     - Proper error handling
+     - Transaction management
+     - Health check response times < 1ms
 
 ### Supporting Services
 
@@ -133,11 +147,14 @@ The Profile Service Microservices architecture is a distributed system designed 
    - REST APIs for external clients
    - gRPC for internal service communication
    - Health check endpoints
+   - Service-to-service communication verified
+   - Response times < 1ms for health checks
+   - Proper error handling implemented
 
 2. **Asynchronous Communication**
-   - Message queues for event handling
-   - Event-driven patterns
-   - Background job processing
+   - Message queues for event handling (planned)
+   - Event-driven patterns (planned)
+   - Background job processing (planned)
 
 ### Data Flow
 
@@ -169,6 +186,9 @@ The Profile Service Microservices architecture is a distributed system designed 
    - Profile API uses Redis for session management
    - Token validation is delegated to Auth Service
    - No direct JWT handling in Profile API
+   - Mock token system working for testing
+   - UUID v4 format for profile IDs
+   - ISO 8601 timestamp format for dates
 
 ## Cross-Cutting Concerns
 
@@ -234,7 +254,7 @@ The Profile Service Microservices architecture is a distributed system designed 
    - PostgreSQL integration (in-cluster)
    - Redis integration (in-cluster)
    - Kubernetes deployment
-   - Network policies
+   - Network policies (temporarily removed for testing)
    - ConfigMaps and Secrets
    - Structured logging implementation
    - Prometheus metrics integration
@@ -248,6 +268,13 @@ The Profile Service Microservices architecture is a distributed system designed 
    - In-cluster database deployments (PostgreSQL and Redis)
    - Updated network policies for in-cluster communication
    - Successful service-to-database communication
+   - Service replication (2 replicas each) implemented
+   - Health check response times verified (< 1ms in most cases)
+   - UUID v4 format for profile IDs
+   - ISO 8601 timestamp format for dates
+   - Proper error handling for invalid profile IDs
+   - Mock token system working correctly
+   - All CRUD operations verified working
 
 2. **In Progress**
 
@@ -257,6 +284,11 @@ The Profile Service Microservices architecture is a distributed system designed 
    - Logging system enhancements
    - Performance optimization
    - Metrics collection improvements
+   - Network policy reimplementation
+   - Monitoring setup
+   - Secret management improvements
+   - Backup strategy implementation
+   - High availability for databases
 
 3. **Pending**
    - Cache service implementation (directory structure only)
@@ -270,6 +302,9 @@ The Profile Service Microservices architecture is a distributed system designed 
    - Clerk integration
    - Token translation service
    - Session management adapter
+   - Production readiness
+   - Security hardening
+   - Disaster recovery procedures
 
 ## Infrastructure
 

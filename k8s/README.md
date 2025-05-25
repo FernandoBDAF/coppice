@@ -353,6 +353,20 @@ Auth Service:
 - No horizontal pod autoscaling
 - No pod disruption budgets
 
+## Recent Changes
+
+- Removed NetworkPolicy from deployment.yaml
+- Fixed profile-storage pod connectivity issues
+- Verified successful database connections
+- All services now running with proper health checks
+- Confirmed pod-to-pod communication working
+
+- Reorganized manifests in k8s folder
+- Added comprehensive README.md
+- Created TRACKER&MANAGER.md
+- Removed network policies for testing
+- Updated service configurations
+
 ## Suggested Improvements
 
 ### High Priority
@@ -391,3 +405,233 @@ Auth Service:
 - Grafana for visualization
 - Service mesh for traffic management
 - Advanced logging solution
+
+## Service Architecture
+
+### Core Services
+
+1. **Profile API Service** (`/services/profile-api`)
+
+   - Primary entry point for client applications
+   - Handles request routing and validation
+   - Manages authentication and authorization
+   - Integrates with other services for data operations
+   - Status: In Progress
+   - Key Features:
+     - REST API endpoints
+     - Authentication middleware
+     - Session management with Redis
+     - Health monitoring
+     - Error handling
+     - Structured logging with Zap logger
+     - Prometheus metrics integration
+     - Service replication (2 replicas)
+     - Proper error handling for invalid IDs
+     - UUID v4 for profile IDs
+     - ISO 8601 timestamp format
+
+2. **Auth Service** (`/services/auth`)
+
+   - Handles user authentication and authorization
+   - Manages JWT tokens and sessions
+   - Implements OAuth 2.0 / OpenID Connect
+   - Provides role-based access control
+   - Status: Migration in Progress
+   - Key Features:
+     - User authentication
+     - Token management
+     - Session handling
+     - Role management
+     - Clerk integration (in progress)
+     - Backward compatibility layer
+     - Service replication (2 replicas)
+     - Mock token implementation for testing
+     - Token validation endpoints
+
+3. **Profile Storage Service** (`/services/profile-storage`)
+   - Manages data persistence and database operations
+   - Ensures data integrity and consistency
+   - Provides efficient data access patterns
+   - Status: In Progress
+   - Key Features:
+     - gRPC API for internal communication
+     - REST API implementation
+     - PostgreSQL integration with connection pooling
+     - Health monitoring with Prometheus metrics
+     - Kubernetes deployment with ConfigMaps and Secrets
+     - Docker containerization with multi-stage builds
+     - Structured logging with Zap logger
+     - Service replication (2 replicas)
+     - Proper error handling
+     - Transaction management
+
+#### API Examples
+
+#### Authentication Flow
+
+1. **Get Authentication Token**
+
+   ```bash
+   # Request a new authentication token
+   curl -X POST http://profile-api/api/v1/auth/token \
+     -H "Content-Type: application/json" \
+     -d '{"user_id": "user1", "password": "123456"}'
+
+   # Example Response
+   {
+     "token": "mock_access_token",
+     "error": null
+   }
+   ```
+
+2. **Use Token for Profile Operations**
+
+   ```bash
+   # Use the token for profile operations
+   curl -X GET http://profile-api/api/v1/profiles \
+     -H "Authorization: Bearer mock_access_token"
+   ```
+
+Note: The Profile API handles authentication by:
+
+1. Getting tokens from the auth service
+2. Storing sessions in Redis
+3. Validating tokens with both Redis and the auth service
+4. Managing session expiration
+
+#### Profile Management Endpoints
+
+Note: The service is accessible via the service name `profile-api` in the cluster. When accessing from within the cluster, use `http://profile-api` as the base URL. When accessing from outside the cluster, use the appropriate external URL or port-forwarding.
+
+All endpoints have been verified working from within the cluster, with successful communication to the profile-storage service.
+
+1. **List Profiles**
+
+   ```bash
+   # Get all profiles (from within cluster)
+   curl -X GET http://profile-api/api/v1/profiles \
+     -H "Authorization: Bearer mock_access_token"
+
+   # Example Response
+   [
+     {
+       "id": "89afa111-ab61-4ec8-a197-bb91a203a81b",
+       "first_name": "John",
+       "last_name": "Smith",
+       "email": "john.smith@example.com",
+       "created_at": "2025-05-25T05:51:05.849323Z",
+       "updated_at": "2025-05-25T05:52:06.778368Z"
+     }
+   ]
+   ```
+
+2. **Get Profile by ID**
+
+   ```bash
+   # Get a specific profile
+   curl -X GET http://profile-api/api/v1/profiles/89afa111-ab61-4ec8-a197-bb91a203a81b \
+     -H "Authorization: Bearer mock_access_token"
+
+   # Example Response
+   {
+     "profile": {
+       "id": "89afa111-ab61-4ec8-a197-bb91a203a81b",
+       "first_name": "John",
+       "last_name": "Smith",
+       "email": "john.smith@example.com",
+       "created_at": "2025-05-25T05:51:05.849323Z",
+       "updated_at": "2025-05-25T05:52:06.778368Z",
+       "get_from": "storage"
+     }
+   }
+   ```
+
+3. **Create Profile**
+
+   ```bash
+   # Create a new profile
+   curl -X POST http://profile-api/api/v1/profiles \
+     -H "Content-Type: application/json" \
+     -H "Authorization: Bearer mock_access_token" \
+     -d '{
+       "first_name": "John",
+       "last_name": "Doe",
+       "email": "john.doe2@example.com"
+     }'
+
+   # Example Response
+   {
+     "profile": {
+       "id": "89afa111-ab61-4ec8-a197-bb91a203a81b",
+       "first_name": "John",
+       "last_name": "Doe",
+       "email": "john.doe2@example.com",
+       "created_at": "2025-05-25T05:51:05.849323Z",
+       "updated_at": "2025-05-25T05:51:05.849323Z"
+     }
+   }
+   ```
+
+4. **Update Profile**
+
+   ```bash
+   # Update an existing profile
+   curl -X PUT http://profile-api/api/v1/profiles/89afa111-ab61-4ec8-a197-bb91a203a81b \
+     -H "Content-Type: application/json" \
+     -H "Authorization: Bearer mock_access_token" \
+     -d '{
+       "first_name": "John",
+       "last_name": "Smith",
+       "email": "john.smith@example.com"
+     }'
+
+   # Example Response
+   {
+     "profile": {
+       "id": "89afa111-ab61-4ec8-a197-bb91a203a81b",
+       "first_name": "John",
+       "last_name": "Smith",
+       "email": "john.smith@example.com",
+       "created_at": "2025-05-25T05:51:05.849323Z",
+       "updated_at": "2025-05-25T05:52:06.778368Z"
+     }
+   }
+   ```
+
+5. **Delete Profile**
+
+   ```bash
+   # Delete a profile
+   curl -X DELETE http://profile-api/api/v1/profiles/89afa111-ab61-4ec8-a197-bb91a203a81b \
+     -H "Authorization: Bearer mock_access_token"
+
+   # Example Response
+   {}
+   ```
+
+6. **Error Handling**
+
+   ```bash
+   # Invalid Profile ID
+   curl -X GET http://profile-api/api/v1/profiles/invalid-id \
+     -H "Authorization: Bearer mock_access_token"
+
+   # Example Error Response
+   {
+     "error": "Failed to get existing profile invalid-id: unexpected status code 400: Invalid profile ID"
+   }
+   ```
+
+Note:
+
+- The service is accessible via the service name `profile-api` in the cluster
+- When accessing from within the cluster, use `http://profile-api` as the base URL
+- When accessing from outside the cluster, use the appropriate external URL or port-forwarding
+- The token in the examples is a mock token for testing - in production, use the actual token received from the token endpoint
+- All profile endpoints require a valid authentication token
+- Error responses will include an error message in the "error" field
+- The service uses UUID v4 for profile IDs
+- All timestamps are in ISO 8601 format with UTC timezone
+- All services are running with 2 replicas for high availability
+- Health checks are responding with good latency (< 1ms in most cases)
+- Service communication is working properly between all components
