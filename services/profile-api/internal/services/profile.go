@@ -132,7 +132,7 @@ func (s *ProfileService) CreateProfile(ctx context.Context, req *models.ProfileR
 		}
 	}
 	logger.LogInfo(ctx, "Successfully created profile",
-		zap.String("id", createdProfile.ID),
+		zap.String("id", createdProfile.ID.String()),
 		zap.String("email", req.Email))
 	return createdProfile, nil
 }

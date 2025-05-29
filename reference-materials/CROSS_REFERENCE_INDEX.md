@@ -20,7 +20,22 @@
 - Primary Location: `development/`
 - Related Sections:
   - Patterns: `development/patterns/`
+    - Worker Services: `development/patterns/worker-service-patterns.md`
+    - Long-Running Tasks: `development/patterns/long-running-tasks.md`
+    - Queuing: `development/patterns/queuing-patterns.md`
+    - Monitoring: `development/patterns/monitoring-patterns.md`
+    - Security: `development/patterns/security-patterns.md`
+    - Data Storage: `development/patterns/data-storage-patterns.md`
+    - Caching: `development/patterns/caching-patterns.md`
+  - Best Practices: `development/best-practices/`
+    - API Design: `development/best-practices/api-design-best-practices.md`
+    - Error Handling: `development/best-practices/error-handling-best-practices.md`
+    - Security: `development/best-practices/security-best-practices.md`
+    - Database: `development/best-practices/database-best-practices.md`
+    - Caching: `development/best-practices/caching-best-practices.md`
+    - Logging: `development/best-practices/logging-best-practices.md`
   - Testing: `development/testing/`
+    - Strategy: `development/testing-strategy.md`
   - Tools: `development/tools/`
     - Kubernetes: `development/tools/kubernetes/`
       - Helm: `development/tools/kubernetes/helm.md`
@@ -35,6 +50,8 @@
   - Load Testing: `performance/load-testing/`
   - Monitoring: `performance/monitoring/`
   - Optimization: `performance/optimization/`
+  - Metrics: `performance/metrics/`
+  - Profiling: `performance/profiling/`
 
 ### Security
 
@@ -43,6 +60,9 @@
   - Network Security: `security/network/`
   - Service Security: `security/service/`
   - API Security: `security/api/`
+  - Authentication: `security/authentication/`
+  - Authorization: `security/authorization/`
+  - Encryption: `security/encryption/`
 
 ### Operations
 
@@ -53,6 +73,10 @@
   - Environment: `templates/operations/environment-setup.md`
   - Production: `templates/operations/production-deployment.md`
   - Scaling: `templates/operations/scaling-guide.md`
+  - Monitoring: `templates/operations/monitoring/`
+  - Maintenance: `templates/operations/maintenance/`
+  - Health: `templates/operations/health/`
+  - Incidents: `templates/operations/incidents/`
 
 ### LLM
 
@@ -61,6 +85,8 @@
   - Integration: `llm/integration/`
   - Patterns: `llm/patterns/`
   - Best Practices: `llm/best-practices/`
+  - Security: `llm/security/`
+  - Monitoring: `llm/monitoring/`
 
 ### Templates
 
@@ -70,6 +96,7 @@
   - Architecture: `templates/architecture/`
   - Testing: `templates/testing/`
   - Operations: `templates/operations/`
+  - Documentation: `templates/documentation/`
 
 ## Migration Status
 
@@ -79,6 +106,9 @@
 - Development Resources
   - Kubernetes Tools Documentation
   - Helm and Kustomize Guides
+  - Worker Service Patterns
+  - Long-Running Tasks
+  - Monitoring Patterns
 - Performance Resources
 - Templates and API
 - Security Documentation
@@ -89,10 +119,15 @@
 - LLM Resources
 - Cross-Reference Updates
 - Documentation Integration
+- Best Practices Documentation
+- Testing Strategy Documentation
 
 ### Pending Migrations [ ]
 
-- None
+- Service Evolution Documentation
+- Performance Optimization Guides
+- Security Best Practices
+- Monitoring Best Practices
 
 ## Cross-Section References
 
@@ -102,6 +137,8 @@
 - Network Security: `security/network/`
 - Service Security: `security/service/`
 - API Security: `security/api/`
+- Worker Service Security: `development/patterns/security-patterns.md`
+- Security Best Practices: `development/best-practices/security-best-practices.md`
 
 ### Deployment
 
@@ -114,14 +151,29 @@
 - Environment Setup: `templates/operations/environment-setup.md`
 - Production Deployment: `templates/operations/production-deployment.md`
 - Scaling Guide: `templates/operations/scaling-guide.md`
+- Worker Service Deployment: `development/patterns/worker-service-patterns.md`
 
 ### Development
 
 - Patterns: `development/patterns/`
+  - Worker Services: `development/patterns/worker-service-patterns.md`
+  - Long-Running Tasks: `development/patterns/long-running-tasks.md`
+  - Queuing: `development/patterns/queuing-patterns.md`
+  - Monitoring: `development/patterns/monitoring-patterns.md`
+  - Security: `development/patterns/security-patterns.md`
+  - Data Storage: `development/patterns/data-storage-patterns.md`
+  - Caching: `development/patterns/caching-patterns.md`
+- Best Practices: `development/best-practices/`
+  - API Design: `development/best-practices/api-design-best-practices.md`
+  - Error Handling: `development/best-practices/error-handling-best-practices.md`
+  - Security: `development/best-practices/security-best-practices.md`
+  - Database: `development/best-practices/database-best-practices.md`
+  - Caching: `development/best-practices/caching-best-practices.md`
+  - Logging: `development/best-practices/logging-best-practices.md`
 - Testing: `development/testing/`
+  - Strategy: `development/testing-strategy.md`
 - Tools: `development/tools/`
   - Kubernetes: `development/tools/kubernetes/`
-- Best Practices: `development/best-practices/`
 
 ### Operations
 
@@ -129,6 +181,7 @@
 - Maintenance: `templates/operations/maintenance/`
 - Health Checks: `templates/operations/health/`
 - Incident Response: `templates/operations/incidents/`
+- Worker Service Operations: `development/patterns/worker-service-patterns.md`
 
 ## Status Legend
 
@@ -143,6 +196,9 @@
 - Maintain consistent naming
 - Document new relationships
 - Remove obsolete references
+- Track documentation dependencies
+- Monitor documentation health
+- Regular review schedule
 
 ## Quick Links
 
@@ -155,9 +211,13 @@
 - [LLM Guide](llm/README.md)
 - [Templates](templates/README.md)
 - [Kubernetes Tools](development/tools/kubernetes/README.md)
+- [Worker Service Patterns](development/patterns/worker-service-patterns.md)
+- [Long-Running Tasks](development/patterns/long-running-tasks.md)
+- [Monitoring Patterns](development/patterns/monitoring-patterns.md)
 
 ## Architecture Diagrams
 
 - [Flow Diagrams](architecture/overview/flow/)
 - [Sequence Diagrams](architecture/communication/sequence/)
 - [Deployment Diagrams](architecture/services/deployment/)
+- [Worker Service Diagrams](development/patterns/worker-service-patterns.md#architecture-diagrams)

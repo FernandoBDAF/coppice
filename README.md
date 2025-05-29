@@ -105,6 +105,10 @@ The Profile Service Microservices architecture is a distributed system designed 
      - Redis integration
      - Cache policies
      - Invalidation strategies
+     - Cache patterns (Cache-aside, Read-through, Write-through)
+     - Cache consistency management
+     - Cache warming support
+     - Cache monitoring and metrics
 
 5. **Profile Queue Service** (`/services/profile-queue`)
 
@@ -113,9 +117,13 @@ The Profile Service Microservices architecture is a distributed system designed 
    - Ensures message persistence
    - Status: Planned
    - Key Features:
+     - RabbitMQ integration
      - Message queuing
      - Event handling
      - Queue management
+     - Dead letter exchange
+     - Message TTL
+     - Retry policies
 
 6. **Profile Worker Service** (`/services/profile-worker`)
 
@@ -124,9 +132,13 @@ The Profile Service Microservices architecture is a distributed system designed 
    - Manages job monitoring
    - Status: Planned
    - Key Features:
+     - Email validation worker
+     - Image generation worker
      - Job processing
      - Task scheduling
      - Error handling
+     - Retry mechanisms
+     - Progress tracking
 
 7. **Profile Monitoring Service** (`/services/profile-monitoring`)
    - Collects system metrics
@@ -134,9 +146,642 @@ The Profile Service Microservices architecture is a distributed system designed 
    - Handles alerting
    - Status: Planned
    - Key Features:
-     - Metrics collection
-     - Health monitoring
+     - Prometheus metrics
+     - Grafana dashboards
+     - ELK stack integration
+     - Distributed tracing
      - Alert management
+     - Performance monitoring
+     - Resource tracking
+
+## Base Libraries
+
+### 1. Logging Base Library (`/pkg/logging`)
+
+- Implements hybrid logging approach
+- Provides structured logging with Zap
+- Supports context propagation
+- Features:
+  - Standardized log formats
+  - Log levels and filtering
+  - Context enrichment
+  - Error tracking
+  - Performance metrics
+  - Integration with monitoring
+
+### 2. Monitoring Base Library (`/pkg/monitoring`)
+
+- Direct Prometheus integration
+- Standard metrics collection
+- Health check system
+- Features:
+  - Service metrics
+  - Business metrics
+  - Health checks
+  - Alert rules
+  - Performance tracking
+  - Resource monitoring
+
+### 3. Shared Libraries
+
+#### 3.1 Cache Library (`/pkg/cache`)
+
+- **Base Cache Library**
+
+  - Common cache interfaces
+  - Standard cache patterns
+  - Error handling
+  - Metrics collection
+  - Health checks
+  - Circuit breaking
+
+- **Cache API Client Library**
+  - REST client for Cache API Service
+  - Connection management
+  - Retry mechanism
+  - Error handling
+  - Metrics collection
+  - Health checks
+
+#### 3.2 Queue Library (`/pkg/queue`)
+
+- **Base Queue Library**
+
+  - Common queue interfaces
+  - Standard queue patterns
+  - Error handling
+  - Metrics collection
+  - Health checks
+  - Circuit breaking
+
+- **Queue API Client Library**
+  - REST client for Queue API Service
+  - Message handling
+  - Retry mechanism
+  - Error handling
+  - Metrics collection
+  - Health checks
+
+#### 3.3 Storage Library (`/pkg/storage`)
+
+- **Base Storage Library**
+
+  - Common storage interfaces
+  - Standard storage patterns
+  - Error handling
+  - Metrics collection
+  - Health checks
+  - Circuit breaking
+
+- **Storage API Client Library**
+  - REST client for Storage API Service
+  - Connection management
+  - Retry mechanism
+  - Error handling
+  - Metrics collection
+  - Health checks
+
+### 4. Service Integration Library (`/pkg/integration`)
+
+- Common service integration patterns
+- Standard error handling
+- Circuit breaking
+- Retry mechanisms
+- Metrics collection
+- Health checks
+- Features:
+  - Service discovery
+  - Load balancing
+  - Connection pooling
+  - Error propagation
+  - Context handling
+  - Metrics aggregation
+
+## Library Usage Examples
+
+### 1. Profile API Service Example
+
+```go
+// Using Logging Library
+logger := logging.NewLogger("profile-api")
+logger.Info("Processing profile request",
+    logging.WithField("profile_id", profileID),
+    logging.WithField("action", "update"))
+
+// Using Monitoring Library
+monitor := monitoring.NewCollector("profile-api")
+monitor.IncRequests("profile_update")
+defer monitor.ObserveDuration("profile_update")
+
+// Using Cache Client Library
+cacheClient := cache.NewAPIClient(cache.Config{
+    Endpoint: "http://cache-api:8080",
+    Timeout:  time.Second * 5,
+})
+profile, err := cacheClient.Get(ctx, "profile:"+profileID)
+
+// Using Queue Client Library
+queueClient := queue.NewAPIClient(queue.Config{
+    Endpoint: "http://queue-api:8080",
+    Timeout:  time.Second * 5,
+})
+err = queueClient.Publish(ctx, "profile-updates", &queue.Message{
+    Type: "profile_updated",
+    Data: profileData,
+})
+
+// Using Storage Client Library
+storageClient := storage.NewAPIClient(storage.Config{
+    Endpoint: "http://storage-api:8080",
+    Timeout:  time.Second * 5,
+})
+err = storageClient.Update(ctx, "profiles", profileID, profileData)
+```
+
+### 2. Worker Service Example
+
+```go
+// Using Logging Library
+logger := logging.NewLogger("profile-worker")
+logger.Info("Processing worker task",
+    logging.WithField("task_id", taskID),
+    logging.WithField("type", "email_validation"))
+
+// Using Monitoring Library
+monitor := monitoring.NewCollector("profile-worker")
+monitor.IncTasks("email_validation")
+defer monitor.ObserveDuration("email_validation")
+
+// Using Queue Client Library
+queueClient := queue.NewAPIClient(queue.Config{
+    Endpoint: "http://queue-api:8080",
+    Timeout:  time.Second * 5,
+})
+messages, err := queueClient.Consume(ctx, "email-validation", 10)
+
+// Using Storage Client Library
+storageClient := storage.NewAPIClient(storage.Config{
+    Endpoint: "http://storage-api:8080",
+    Timeout:  time.Second * 5,
+})
+err = storageClient.Update(ctx, "profiles", profileID, map[string]interface{}{
+    "email_validated": true,
+})
+```
+
+### 3. Service Integration Example
+
+```go
+// Using Service Integration Library
+integration := integration.NewServiceIntegration(integration.Config{
+    ServiceName: "profile-api",
+    Discovery:   "kubernetes",
+})
+
+// Register health checks
+integration.RegisterHealthCheck("cache", func() error {
+    return cacheClient.HealthCheck(ctx)
+})
+integration.RegisterHealthCheck("queue", func() error {
+    return queueClient.HealthCheck(ctx)
+})
+integration.RegisterHealthCheck("storage", func() error {
+    return storageClient.HealthCheck(ctx)
+})
+
+// Use circuit breaker
+breaker := integration.NewCircuitBreaker("cache-api", integration.CircuitBreakerConfig{
+    Threshold: 5,
+    Timeout:   time.Second * 30,
+})
+
+// Use retry mechanism
+retry := integration.NewRetry(integration.RetryConfig{
+    MaxAttempts: 3,
+    Backoff:     time.Second * 2,
+})
+
+// Use metrics aggregation
+metrics := integration.NewMetricsAggregator()
+metrics.RegisterCollector(cacheClient.GetMetrics())
+metrics.RegisterCollector(queueClient.GetMetrics())
+metrics.RegisterCollector(storageClient.GetMetrics())
+```
+
+### 4. Error Handling Example
+
+```go
+// Using shared error handling
+if err != nil {
+    switch {
+    case errors.Is(err, cache.ErrNotFound):
+        logger.Warn("Cache miss", logging.WithError(err))
+        monitor.IncCacheMisses()
+    case errors.Is(err, queue.ErrQueueFull):
+        logger.Error("Queue full", logging.WithError(err))
+        monitor.IncQueueErrors()
+    case errors.Is(err, storage.ErrConnection):
+        logger.Error("Storage connection error", logging.WithError(err))
+        monitor.IncStorageErrors()
+    default:
+        logger.Error("Unexpected error", logging.WithError(err))
+        monitor.IncErrors()
+    }
+    return nil, err
+}
+```
+
+### 5. Context Propagation Example
+
+```go
+// Using context propagation
+ctx = logging.WithLogger(ctx, logger)
+ctx = monitoring.WithCollector(ctx, monitor)
+ctx = integration.WithCircuitBreaker(ctx, breaker)
+ctx = integration.WithRetry(ctx, retry)
+
+// Context is automatically propagated to all client calls
+profile, err := cacheClient.Get(ctx, "profile:"+profileID)
+if err != nil {
+    // Error handling with context
+    logger.Error("Failed to get profile from cache",
+        logging.WithError(err),
+        logging.WithContext(ctx))
+    return nil, err
+}
+```
+
+These examples demonstrate:
+
+1. Consistent usage patterns across services
+2. Proper error handling and propagation
+3. Metrics collection and monitoring
+4. Health check integration
+5. Circuit breaking and retry mechanisms
+6. Context propagation
+7. Logging with context
+
+## Complex Integration Scenarios
+
+### 1. Distributed Transaction with Cache Invalidation
+
+```go
+// Complex scenario: Update profile with cache invalidation and event publishing
+func (s *ProfileService) UpdateProfile(ctx context.Context, profile *Profile) error {
+    // Create transaction context
+    txCtx := integration.NewTransactionContext(ctx)
+    defer txCtx.Cleanup()
+
+    // Initialize clients with transaction context
+    storageClient := storage.NewAPIClient(storage.Config{
+        Endpoint: "http://storage-api:8080",
+        Timeout:  time.Second * 5,
+    })
+    cacheClient := cache.NewAPIClient(cache.Config{
+        Endpoint: "http://cache-api:8080",
+        Timeout:  time.Second * 5,
+    })
+    queueClient := queue.NewAPIClient(queue.Config{
+        Endpoint: "http://queue-api:8080",
+        Timeout:  time.Second * 5,
+    })
+
+    // Setup monitoring
+    monitor := monitoring.NewCollector("profile-service")
+    defer monitor.ObserveDuration("profile_update")
+
+    // Setup logging with transaction ID
+    logger := logging.NewLogger("profile-service")
+    logger = logger.WithField("transaction_id", txCtx.ID())
+
+    // Begin transaction
+    if err := txCtx.Begin(); err != nil {
+        logger.Error("Failed to begin transaction", logging.WithError(err))
+        return err
+    }
+
+    // Update storage
+    if err := storageClient.Update(txCtx, "profiles", profile.ID, profile); err != nil {
+        logger.Error("Failed to update storage", logging.WithError(err))
+        txCtx.Rollback()
+        return err
+    }
+
+    // Invalidate cache
+    if err := cacheClient.Delete(txCtx, "profile:"+profile.ID); err != nil {
+        logger.Error("Failed to invalidate cache", logging.WithError(err))
+        txCtx.Rollback()
+        return err
+    }
+
+    // Publish event
+    if err := queueClient.Publish(txCtx, "profile-updates", &queue.Message{
+        Type: "profile_updated",
+        Data: profile,
+    }); err != nil {
+        logger.Error("Failed to publish event", logging.WithError(err))
+        txCtx.Rollback()
+        return err
+    }
+
+    // Commit transaction
+    if err := txCtx.Commit(); err != nil {
+        logger.Error("Failed to commit transaction", logging.WithError(err))
+        txCtx.Rollback()
+        return err
+    }
+
+    return nil
+}
+```
+
+### 2. Circuit Breaker with Fallback Strategy
+
+```go
+// Complex scenario: Get profile with circuit breaker and fallback
+func (s *ProfileService) GetProfile(ctx context.Context, profileID string) (*Profile, error) {
+    // Setup circuit breaker with fallback
+    breaker := integration.NewCircuitBreaker("cache-api", integration.CircuitBreakerConfig{
+        Threshold: 5,
+        Timeout:   time.Second * 30,
+        Fallback: func(ctx context.Context) (interface{}, error) {
+            // Fallback to storage when cache is down
+            storageClient := storage.NewAPIClient(storage.Config{
+                Endpoint: "http://storage-api:8080",
+                Timeout:  time.Second * 5,
+            })
+            return storageClient.Get(ctx, "profiles", profileID)
+        },
+    })
+
+    // Setup retry with exponential backoff
+    retry := integration.NewRetry(integration.RetryConfig{
+        MaxAttempts: 3,
+        Backoff:     time.Second * 2,
+        BackoffFunc: integration.ExponentialBackoff,
+    })
+
+    // Combine circuit breaker and retry
+    executor := integration.NewExecutor(breaker, retry)
+
+    // Execute with monitoring
+    monitor := monitoring.NewCollector("profile-service")
+    defer monitor.ObserveDuration("profile_get")
+
+    var profile *Profile
+    err := executor.Execute(ctx, func(ctx context.Context) error {
+        cacheClient := cache.NewAPIClient(cache.Config{
+            Endpoint: "http://cache-api:8080",
+            Timeout:  time.Second * 5,
+        })
+        var err error
+        profile, err = cacheClient.Get(ctx, "profile:"+profileID)
+        return err
+    })
+
+    if err != nil {
+        logger.Error("Failed to get profile",
+            logging.WithError(err),
+            logging.WithField("profile_id", profileID))
+        return nil, err
+    }
+
+    return profile, nil
+}
+```
+
+### 3. Batch Processing with Rate Limiting
+
+```go
+// Complex scenario: Batch process profiles with rate limiting
+func (s *ProfileService) BatchProcessProfiles(ctx context.Context, profileIDs []string) error {
+    // Setup rate limiter
+    limiter := integration.NewRateLimiter(integration.RateLimiterConfig{
+        Rate:      100, // requests per second
+        Burst:     200,
+        Timeout:   time.Second * 30,
+    })
+
+    // Setup worker pool
+    pool := integration.NewWorkerPool(integration.WorkerPoolConfig{
+        NumWorkers: 10,
+        QueueSize:  1000,
+    })
+
+    // Setup monitoring
+    monitor := monitoring.NewCollector("profile-service")
+    defer monitor.ObserveDuration("batch_process")
+
+    // Setup logging
+    logger := logging.NewLogger("profile-service")
+    logger = logger.WithField("batch_id", uuid.New().String())
+
+    // Process profiles in batches
+    for i := 0; i < len(profileIDs); i += 100 {
+        batch := profileIDs[i:min(i+100, len(profileIDs))]
+
+        // Wait for rate limit
+        if err := limiter.Wait(ctx); err != nil {
+            logger.Error("Rate limit exceeded", logging.WithError(err))
+            return err
+        }
+
+        // Submit batch to worker pool
+        if err := pool.Submit(ctx, func(ctx context.Context) error {
+            return s.processProfileBatch(ctx, batch)
+        }); err != nil {
+            logger.Error("Failed to submit batch", logging.WithError(err))
+            return err
+        }
+    }
+
+    // Wait for all workers to complete
+    if err := pool.Wait(); err != nil {
+        logger.Error("Batch processing failed", logging.WithError(err))
+        return err
+    }
+
+    return nil
+}
+
+func (s *ProfileService) processProfileBatch(ctx context.Context, profileIDs []string) error {
+    // Initialize clients
+    storageClient := storage.NewAPIClient(storage.Config{
+        Endpoint: "http://storage-api:8080",
+        Timeout:  time.Second * 5,
+    })
+    cacheClient := cache.NewAPIClient(cache.Config{
+        Endpoint: "http://cache-api:8080",
+        Timeout:  time.Second * 5,
+    })
+
+    // Process each profile
+    for _, profileID := range profileIDs {
+        // Get profile from storage
+        profile, err := storageClient.Get(ctx, "profiles", profileID)
+        if err != nil {
+            logger.Error("Failed to get profile",
+                logging.WithError(err),
+                logging.WithField("profile_id", profileID))
+            continue
+        }
+
+        // Update cache
+        if err := cacheClient.Set(ctx, "profile:"+profileID, profile); err != nil {
+            logger.Error("Failed to update cache",
+                logging.WithError(err),
+                logging.WithField("profile_id", profileID))
+            continue
+        }
+    }
+
+    return nil
+}
+```
+
+### 4. Service Mesh Integration
+
+```go
+// Complex scenario: Service mesh integration with tracing
+func (s *ProfileService) HandleProfileRequest(ctx context.Context, req *ProfileRequest) (*ProfileResponse, error) {
+    // Setup service mesh integration
+    mesh := integration.NewServiceMesh(integration.ServiceMeshConfig{
+        ServiceName: "profile-service",
+        Tracing:     true,
+        Metrics:     true,
+    })
+
+    // Create span for request handling
+    span, ctx := mesh.StartSpan(ctx, "handle_profile_request")
+    defer span.End()
+
+    // Add request context
+    span.SetTag("profile_id", req.ProfileID)
+    span.SetTag("action", req.Action)
+
+    // Initialize clients with mesh context
+    storageClient := storage.NewAPIClient(storage.Config{
+        Endpoint: "http://storage-api:8080",
+        Timeout:  time.Second * 5,
+        Mesh:     mesh,
+    })
+    cacheClient := cache.NewAPIClient(cache.Config{
+        Endpoint: "http://cache-api:8080",
+        Timeout:  time.Second * 5,
+        Mesh:     mesh,
+    })
+
+    // Setup monitoring with mesh metrics
+    monitor := monitoring.NewCollector("profile-service")
+    monitor.SetMesh(mesh)
+    defer monitor.ObserveDuration("handle_profile_request")
+
+    // Setup logging with trace ID
+    logger := logging.NewLogger("profile-service")
+    logger = logger.WithField("trace_id", span.TraceID())
+
+    // Handle request with distributed tracing
+    profile, err := s.getProfileWithTracing(ctx, req.ProfileID, storageClient, cacheClient)
+    if err != nil {
+        span.SetError(err)
+        logger.Error("Failed to handle profile request",
+            logging.WithError(err),
+            logging.WithField("profile_id", req.ProfileID))
+        return nil, err
+    }
+
+    return &ProfileResponse{
+        Profile: profile,
+        TraceID: span.TraceID(),
+    }, nil
+}
+
+func (s *ProfileService) getProfileWithTracing(
+    ctx context.Context,
+    profileID string,
+    storageClient *storage.Client,
+    cacheClient *cache.Client,
+) (*Profile, error) {
+    // Create child span
+    span, ctx := mesh.StartSpan(ctx, "get_profile")
+    defer span.End()
+
+    // Try cache first
+    profile, err := cacheClient.Get(ctx, "profile:"+profileID)
+    if err == nil {
+        span.SetTag("source", "cache")
+        return profile, nil
+    }
+
+    // Fallback to storage
+    profile, err = storageClient.Get(ctx, "profiles", profileID)
+    if err != nil {
+        span.SetError(err)
+        return nil, err
+    }
+
+    // Update cache
+    if err := cacheClient.Set(ctx, "profile:"+profileID, profile); err != nil {
+        logger.Warn("Failed to update cache",
+            logging.WithError(err),
+            logging.WithField("profile_id", profileID))
+    }
+
+    span.SetTag("source", "storage")
+    return profile, nil
+}
+```
+
+These complex scenarios demonstrate:
+
+1. Distributed transaction management
+2. Circuit breaker patterns with fallbacks
+3. Batch processing with rate limiting
+4. Service mesh integration with tracing
+5. Advanced error handling and recovery
+6. Performance optimization techniques
+7. Monitoring and observability patterns
+
+## API Services
+
+### 1. Queue API Service (`/services/queue-api`)
+
+- Centralized queue management
+- Message handling
+- Event processing
+- Features:
+  - REST API endpoints
+  - Message patterns
+  - Error handling
+  - Monitoring integration
+  - Health checks
+  - Queue management
+
+### 2. Cache API Service (`/services/cache-api`)
+
+- Centralized cache management
+- Cache operations
+- Cache policies
+- Features:
+  - REST API endpoints
+  - Cache patterns
+  - Error handling
+  - Monitoring integration
+  - Health checks
+  - Cache management
+
+### 3. Storage API Service (`/services/storage-api`)
+
+- Centralized storage management
+- Data operations
+- Data policies
+- Features:
+  - REST API endpoints
+  - Storage patterns
+  - Error handling
+  - Monitoring integration
+  - Health checks
+  - Storage management
 
 ## Service Interactions
 
@@ -155,6 +800,9 @@ The Profile Service Microservices architecture is a distributed system designed 
    - Message queues for event handling (planned)
    - Event-driven patterns (planned)
    - Background job processing (planned)
+   - Dead letter exchange for failed messages
+   - Message TTL for task expiration
+   - Retry policies for transient failures
 
 ### Data Flow
 
@@ -180,15 +828,24 @@ The Profile Service Microservices architecture is a distributed system designed 
               Token Validation (Auth Service)
    ```
 
-   Key points:
+3. **Cache Flow** (Planned)
 
-   - Authentication is handled by the Auth Service
-   - Profile API uses Redis for session management
-   - Token validation is delegated to Auth Service
-   - No direct JWT handling in Profile API
-   - Mock token system working for testing
-   - UUID v4 format for profile IDs
-   - ISO 8601 timestamp format for dates
+   ```
+   Profile API → Cache API → Redis
+        ↓
+   Cache Invalidation
+        ↓
+   Cache Warming
+   ```
+
+4. **Worker Flow** (Planned)
+   ```
+   Profile API → Queue API → Worker Service
+        ↓
+   Task Processing
+        ↓
+   Status Updates
+   ```
 
 ## Cross-Cutting Concerns
 
@@ -200,11 +857,15 @@ The Profile Service Microservices architecture is a distributed system designed 
    - OAuth 2.0 integration
    - Session management
    - Clerk integration (in progress)
+   - Token blacklisting
+   - Rate limiting
 
 2. **Authorization**
    - Role-based access control
    - Permission management
    - Service-to-service authentication
+   - API key management
+   - Resource access control
 
 ### Monitoring
 
@@ -213,12 +874,17 @@ The Profile Service Microservices architecture is a distributed system designed 
    - Service health monitoring
    - Database connectivity
    - Cache status
+   - Queue status
+   - Worker status
 
 2. **Metrics**
 
    - Performance metrics
    - Error rates
    - Resource utilization
+   - Cache hit/miss rates
+   - Queue depths
+   - Worker progress
 
 3. **Logging**
    - Structured logging with Zap
@@ -226,6 +892,7 @@ The Profile Service Microservices architecture is a distributed system designed 
    - Log levels and formatting
    - Request/response logging
    - Error tracking
+   - Audit logging
 
 ### Error Handling
 
@@ -234,11 +901,15 @@ The Profile Service Microservices architecture is a distributed system designed 
    - Standardized error responses
    - Error propagation
    - Error tracking
+   - Error classification
+   - Error recovery
 
 2. **Recovery Strategies**
    - Circuit breakers
    - Retry mechanisms
    - Fallback patterns
+   - Dead letter queues
+   - Error reporting
 
 ## Development Status
 
@@ -325,6 +996,8 @@ The Profile Service Microservices architecture is a distributed system designed 
    - Docker Compose
    - Development environment
    - Multi-stage builds
+   - Resource limits
+   - Health checks
 
 ### Network Security
 
@@ -341,6 +1014,7 @@ The Profile Service Microservices architecture is a distributed system designed 
    - Namespace-based isolation
    - External access restrictions
    - Regular policy reviews
+   - Security scanning
 
 ### Dependencies
 
@@ -348,12 +1022,13 @@ The Profile Service Microservices architecture is a distributed system designed 
 
    - PostgreSQL for data storage (in-cluster)
    - Redis for caching (in-cluster)
-   - RabbitMQ for messaging
+   - RabbitMQ for messaging (planned)
 
 2. **Monitoring**
    - Prometheus for metrics
    - Grafana for visualization
    - ELK stack for logging
+   - Distributed tracing
 
 ## Documentation
 
@@ -398,6 +1073,9 @@ The Profile Service Microservices architecture is a distributed system designed 
 - Document challenges
 - Record lessons learned
 - Track improvements
+- Monitor performance
+- Track security
+- Document integration
 
 ## Tasks History
 
@@ -553,3 +1231,156 @@ Initial test results show:
    - Enhance error tracking
 
 For detailed information about our load testing strategy, see [Load Testing Documentation](docs/load-testing/README.md).
+
+## Worker Services Implementation
+
+### Overview
+
+The worker services implementation introduces asynchronous processing capabilities to the Profile Service architecture, handling email validation and image generation tasks through RabbitMQ message queues.
+
+### Architecture Components
+
+1. **Message Queue System**
+
+   - RabbitMQ as the message broker
+   - Two dedicated queues:
+     - `profile-email-queue`: Email validation tasks
+     - `profile-image-queue`: Image generation tasks
+   - Dead letter exchange for failed message handling
+   - Message TTL for task expiration
+
+2. **Email Worker Service**
+
+   - Consumes messages from `profile-email-queue`
+   - Handles email validation workflow
+   - Updates profile status based on validation results
+   - Implements retry logic for failed validations
+   - Maintains audit trail of validation attempts
+
+3. **Image Worker Service**
+   - Consumes messages from `profile-image-queue`
+   - Integrates with AI image generation API
+   - Manages image storage and retrieval
+   - Updates profile with generated image URLs
+   - Handles image processing failures
+
+### Service Interactions
+
+1. **Profile API to Queue**
+
+   ```
+   Profile API → RabbitMQ → Worker Services
+   ```
+
+   - Profile API publishes messages to appropriate queues
+   - Messages contain task-specific data and metadata
+   - Correlation IDs for request tracking
+   - Timestamps for task scheduling
+
+2. **Worker to Storage**
+   ```
+   Worker Services → Profile Storage → Database
+   ```
+   - Workers update profile data after task completion
+   - Status updates reflect task outcomes
+   - Image URLs stored in profile metadata
+   - Validation status tracked in profile
+
+### Message Types
+
+1. **Email Validation Message**
+
+   ```protobuf
+   message EmailValidationMessage {
+     string profile_id = 1;
+     string email = 2;
+     string validation_token = 3;
+     int64 created_at = 4;
+     int32 max_retries = 5;
+   }
+   ```
+
+2. **Image Generation Message**
+   ```protobuf
+   message ImageGenerationMessage {
+     string profile_id = 1;
+     string prompt = 2;
+     string style = 3;
+     int64 created_at = 4;
+     int32 max_retries = 5;
+   }
+   ```
+
+### Implementation Details
+
+1. **Queue Configuration**
+
+   ```yaml
+   queues:
+     profile-email-queue:
+       ttl: 86400000 # 24 hours
+       max_retries: 3
+       dead_letter_exchange: profile-dlx
+     profile-image-queue:
+       ttl: 3600000 # 1 hour
+       max_retries: 2
+       dead_letter_exchange: profile-dlx
+   ```
+
+2. **Worker Service Configuration**
+   ```yaml
+   workers:
+     email:
+       concurrency: 5
+       batch_size: 10
+       retry_delay: 300000 # 5 minutes
+     image:
+       concurrency: 3
+       batch_size: 5
+       retry_delay: 600000 # 10 minutes
+   ```
+
+### Error Handling
+
+1. **Queue Level**
+
+   - Dead letter exchange for failed messages
+   - Message TTL for task expiration
+   - Retry policies for transient failures
+   - Error logging and monitoring
+
+2. **Worker Level**
+   - Graceful error handling
+   - Retry mechanisms
+   - Circuit breakers for external services
+   - Error reporting and alerting
+
+### Monitoring and Metrics
+
+1. **Queue Metrics**
+
+   - Message rates
+   - Queue depths
+   - Processing times
+   - Error rates
+
+2. **Worker Metrics**
+   - Task completion rates
+   - Processing durations
+   - Error frequencies
+   - Resource utilization
+
+### Security Considerations
+
+1. **Message Security**
+
+   - Encrypted message payloads
+   - Secure queue access
+   - Authentication for workers
+   - Audit logging
+
+2. **API Security**
+   - Rate limiting
+   - API key management
+   - Request validation
+   - Error handling

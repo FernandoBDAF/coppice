@@ -758,52 +758,50 @@ Note:
 
 ### Overview
 
-Kustomize is being implemented to manage environment-specific configurations and provide a more maintainable deployment structure. This implementation follows Kubernetes-native practices and enables GitOps workflows.
+Kustomize is being used to manage environment-specific configurations and provide a more maintainable deployment structure. This implementation follows Kubernetes-native practices and enables GitOps workflows.
 
 ### Directory Structure
 
 ```
 k8s/
-├── base/
-│   ├── profile-api/
-│   │   ├── deployment.yaml
-│   │   ├── service.yaml
-│   │   ├── configmap.yaml
-│   │   └── kustomization.yaml
-│   ├── profile-storage/
-│   │   ├── deployment.yaml
-│   │   ├── service.yaml
-│   │   ├── configmap.yaml
-│   │   └── kustomization.yaml
-│   ├── auth/
-│   │   ├── deployment.yaml
-│   │   ├── service.yaml
-│   │   ├── configmap.yaml
-│   │   └── kustomization.yaml
-│   └── kustomization.yaml
-├── overlays/
-│   ├── development/
+├── profile-service/
+│   ├── base/
 │   │   ├── profile-api/
-│   │   │   ├── kustomization.yaml
-│   │   │   └── patch-deployment.yaml
+│   │   │   ├── deployment.yaml
+│   │   │   ├── service.yaml
+│   │   │   ├── configmap.yaml
+│   │   │   └── kustomization.yaml
 │   │   ├── profile-storage/
-│   │   │   ├── kustomization.yaml
-│   │   │   └── patch-deployment.yaml
+│   │   │   ├── deployment.yaml
+│   │   │   ├── service.yaml
+│   │   │   ├── configmap.yaml
+│   │   │   └── kustomization.yaml
 │   │   ├── auth/
-│   │   │   ├── kustomization.yaml
-│   │   │   └── patch-deployment.yaml
+│   │   │   ├── deployment.yaml
+│   │   │   ├── service.yaml
+│   │   │   ├── configmap.yaml
+│   │   │   ├── secrets.yaml
+│   │   │   └── kustomization.yaml
+│   │   ├── database/
+│   │   │   ├── postgres.yaml
+│   │   │   ├── redis.yaml
+│   │   │   └── kustomization.yaml
 │   │   └── kustomization.yaml
-│   └── production/
-│       ├── profile-api/
-│       │   ├── kustomization.yaml
-│       │   └── patch-deployment.yaml
-│       ├── profile-storage/
-│       │   ├── kustomization.yaml
-│       │   └── patch-deployment.yaml
-│       ├── auth/
-│       │   ├── kustomization.yaml
-│       │   └── patch-deployment.yaml
-│       └── kustomization.yaml
+│   └── overlays/
+│       └── development/
+│           ├── profile-api/
+│           │   ├── kustomization.yaml
+│           │   └── patch-deployment.yaml
+│           ├── profile-storage/
+│           │   ├── kustomization.yaml
+│           │   └── patch-deployment.yaml
+│           ├── auth/
+│           │   ├── kustomization.yaml
+│           │   └── patch-deployment.yaml
+│           ├── database/
+│           │   ├── kustomization.yaml
+│           │   └── patch-deployment.yaml
+│           └── kustomization.yaml
 ```
 
 ### Base Configuration
@@ -819,6 +817,7 @@ resources:
   - profile-api
   - profile-storage
   - auth
+  - database
 
 commonLabels:
   app.kubernetes.io/part-of: profile-service
@@ -849,39 +848,13 @@ patches:
   - path: profile-api/patch-deployment.yaml
   - path: profile-storage/patch-deployment.yaml
   - path: auth/patch-deployment.yaml
+  - path: database/patch-deployment.yaml
 
 configMapGenerator:
   - name: profile-service-config
     literals:
       - ENVIRONMENT=development
       - LOG_LEVEL=debug
-```
-
-#### Production Environment
-
-```yaml
-# overlays/production/kustomization.yaml
-apiVersion: kustomize.config.k8s.io/v1beta1
-kind: Kustomization
-
-resources:
-  - ../../base
-
-namespace: profile-prod
-
-commonLabels:
-  environment: production
-
-patches:
-  - path: profile-api/patch-deployment.yaml
-  - path: profile-storage/patch-deployment.yaml
-  - path: auth/patch-deployment.yaml
-
-configMapGenerator:
-  - name: profile-service-config
-    literals:
-      - ENVIRONMENT=production
-      - LOG_LEVEL=info
 ```
 
 ### Resource Patching
@@ -917,7 +890,7 @@ spec:
    # Development
    kustomize build overlays/development
 
-   # Production
+   # Production (when implemented)
    kustomize build overlays/production
    ```
 
@@ -927,288 +900,43 @@ spec:
    # Development
    kustomize build overlays/development | kubectl apply -f -
 
-   # Production
+   # Production (when implemented)
    kustomize build overlays/production | kubectl apply -f -
    ```
 
-### Benefits
+### Current Status
 
-1. **Environment Management**
-
-   - Clear separation of environments
-   - Consistent base configuration
-   - Environment-specific customizations
-   - Simplified deployment process
-
-2. **Configuration Management**
-
-   - Declarative configuration
-   - Version control friendly
-   - Easy to review changes
-   - Reduced configuration drift
-
-3. **Resource Organization**
-   - Logical grouping of resources
-   - Clear dependency structure
-   - Easy to maintain and update
-   - Better resource isolation
-
-### Integration with Existing Setup
-
-- Compatible with current service architecture
-- Maintains existing resource configurations
-- Preserves current networking setup
-- Supports existing monitoring configuration
+- ✅ Base configuration implemented
+- ✅ Development overlay implemented
+- ✅ All services migrated to kustomize structure
+- ✅ Resource patches configured
+- ✅ Environment-specific configurations set up
+- ✅ Development namespace configured
+- ❌ Production overlay (pending implementation)
+- ❌ Staging environment (pending implementation)
+- ❌ Testing environment (pending implementation)
 
 ### Next Steps
 
-1. **Implementation**
+1. **Production Environment**
 
-   - [ ] Create base configurations
-   - [ ] Set up development overlay
-   - [ ] Set up production overlay
-   - [ ] Test configurations
+   - [ ] Create production overlay
+   - [ ] Configure production-specific patches
+   - [ ] Set up production namespace
+   - [ ] Test production deployment
 
-2. **Documentation**
+2. **Additional Environments**
 
+   - [ ] Implement staging environment
+   - [ ] Set up testing environment
+   - [ ] Configure environment-specific resources
    - [ ] Document deployment procedures
-   - [ ] Create troubleshooting guide
-   - [ ] Add configuration examples
-   - [ ] Update CI/CD pipelines
 
-3. **Validation**
-   - [ ] Test all environments
-   - [ ] Verify resource configurations
-   - [ ] Validate security settings
-   - [ ] Check monitoring integration
-
-### Service Evolution Guidelines
-
-#### Adding New Services
-
-1. **Base Configuration**
-
-   ```yaml
-   # base/<new-service>/kustomization.yaml
-   apiVersion: kustomize.config.k8s.io/v1beta1
-   kind: Kustomization
-
-   resources:
-     - deployment.yaml
-     - service.yaml
-     - configmap.yaml
-
-   commonLabels:
-     app.kubernetes.io/name: <new-service>
-     app.kubernetes.io/part-of: profile-service
-   ```
-
-2. **Environment Overlays**
-
-   ```yaml
-   # overlays/<environment>/<new-service>/kustomization.yaml
-   apiVersion: kustomize.config.k8s.io/v1beta1
-   kind: Kustomization
-
-   resources:
-     - ../../../base/<new-service>
-
-   patches:
-     - path: patch-deployment.yaml
-   ```
-
-3. **Integration Steps**
-   - Add service to base kustomization.yaml
-   - Create environment-specific overlays
-   - Configure service dependencies
-   - Update network policies
-   - Add monitoring configuration
-
-#### Evolving Existing Services
-
-1. **Configuration Updates**
-
-   - Update base configuration
-   - Modify environment-specific patches
-   - Update resource requirements
-   - Adjust health checks
-   - Update monitoring configuration
-
-2. **Dependency Management**
-
-   - Update service dependencies
-   - Modify network policies
-   - Adjust resource limits
-   - Update service mesh configuration
-
-3. **Version Control**
-   - Maintain configuration history
-   - Document changes
-   - Update documentation
-   - Track configuration versions
-
-### Service Integration Patterns
-
-#### 1. Core Services (Profile API, Storage, Auth)
-
-```yaml
-# base/kustomization.yaml
-apiVersion: kustomize.config.k8s.io/v1beta1
-kind: Kustomization
-
-resources:
-  - profile-api
-  - profile-storage
-  - auth
-
-commonLabels:
-  tier: core
-  app.kubernetes.io/part-of: profile-service
-```
-
-#### 2. Supporting Services (Cache, Queue, Worker)
-
-```yaml
-# base/kustomization.yaml
-apiVersion: kustomize.config.k8s.io/v1beta1
-kind: Kustomization
-
-resources:
-  - profile-cache
-  - profile-queue
-  - profile-worker
-
-commonLabels:
-  tier: supporting
-  app.kubernetes.io/part-of: profile-service
-```
-
-#### 3. Monitoring Services
-
-```yaml
-# base/kustomization.yaml
-apiVersion: kustomize.config.k8s.io/v1beta1
-kind: Kustomization
-
-resources:
-  - profile-monitoring
-
-commonLabels:
-  tier: monitoring
-  app.kubernetes.io/part-of: profile-service
-```
-
-### Service Evolution Process
-
-1. **Planning Phase**
-
-   - Define service requirements
-   - Identify dependencies
-   - Plan resource allocation
-   - Design monitoring strategy
-
-2. **Implementation Phase**
-
-   - Create base configuration
-   - Set up environment overlays
-   - Configure service integration
-   - Implement monitoring
-
-3. **Testing Phase**
-
-   - Test service deployment
-   - Verify integration
-   - Validate monitoring
-   - Check resource usage
-
-4. **Deployment Phase**
-   - Deploy to development
-   - Test in staging
-   - Deploy to production
-   - Monitor performance
-
-### Best Practices
-
-1. **Configuration Management**
-
-   - Use consistent naming
-   - Follow directory structure
-   - Maintain documentation
-   - Version control all changes
-
-2. **Resource Management**
-
-   - Set appropriate limits
-   - Configure health checks
-   - Implement monitoring
-   - Plan for scaling
-
-3. **Security**
-
-   - Implement network policies
-   - Configure RBAC
-   - Manage secrets
-   - Regular security audits
-
-4. **Monitoring**
-   - Set up metrics collection
-   - Configure alerts
-   - Monitor resource usage
-   - Track service health
-
-### Service Categories
-
-1. **Core Services**
-
-   - Profile API
-   - Profile Storage
-   - Auth Service
-   - High availability required
-   - Strict monitoring
-
-2. **Supporting Services**
-
-   - Profile Cache
-   - Profile Queue
-   - Profile Worker
-   - Flexible scaling
-   - Basic monitoring
-
-3. **Monitoring Services**
-   - Profile Monitoring
-   - Logging
-   - Metrics
-   - High reliability
-   - Comprehensive monitoring
-
-### Integration Guidelines
-
-1. **Service Communication**
-
-   - Define communication patterns
-   - Configure service mesh
-   - Set up load balancing
-   - Implement circuit breakers
-
-2. **Data Management**
-
-   - Configure data persistence
-   - Set up backups
-   - Implement caching
-   - Manage data lifecycle
-
-3. **Security Integration**
-
-   - Configure authentication
-   - Set up authorization
-   - Implement encryption
-   - Manage secrets
-
-4. **Monitoring Integration**
-   - Set up metrics
-   - Configure logging
-   - Implement tracing
-   - Set up alerts
+3. **Monitoring and Validation**
+   - [ ] Set up monitoring integration
+   - [ ] Implement automated testing
+   - [ ] Create deployment pipelines
+   - [ ] Configure validation checks
 
 ## Helm Integration Considerations
 
@@ -1341,3 +1069,299 @@ Our Helm implementation plan is documented in `HELM-IMPLEMENTATION.md` and inclu
    - Configure resource monitoring
    - Implement logging
    - Set up alerts
+
+## Worker Services Kubernetes Deployment
+
+### Overview
+
+The worker services deployment introduces asynchronous processing capabilities to the Profile Service architecture through Kubernetes-managed worker pods and RabbitMQ message queues.
+
+### Infrastructure Components
+
+1. **RabbitMQ Deployment**
+
+   ```yaml
+   apiVersion: apps/v1
+   kind: Deployment
+   metadata:
+     name: rabbitmq
+     namespace: profile-service
+   spec:
+     replicas: 1
+     selector:
+       matchLabels:
+         app: rabbitmq
+     template:
+       spec:
+         containers:
+           - name: rabbitmq
+             image: rabbitmq:3-management
+             ports:
+               - containerPort: 5672
+               - containerPort: 15672
+             resources:
+               requests:
+                 memory: "256Mi"
+                 cpu: "200m"
+               limits:
+                 memory: "512Mi"
+                 cpu: "500m"
+   ```
+
+2. **Worker Services Deployment**
+   ```yaml
+   apiVersion: apps/v1
+   kind: Deployment
+   metadata:
+     name: profile-worker
+     namespace: profile-service
+   spec:
+     replicas: 2
+     selector:
+       matchLabels:
+         app: profile-worker
+     template:
+       spec:
+         containers:
+           - name: email-worker
+             image: profile-email-worker:latest
+             resources:
+               requests:
+                 memory: "128Mi"
+                 cpu: "100m"
+               limits:
+                 memory: "256Mi"
+                 cpu: "200m"
+           - name: image-worker
+             image: profile-image-worker:latest
+             resources:
+               requests:
+                 memory: "256Mi"
+                 cpu: "200m"
+               limits:
+                 memory: "512Mi"
+                 cpu: "500m"
+   ```
+
+### Service Configuration
+
+1. **RabbitMQ Service**
+
+   ```yaml
+   apiVersion: v1
+   kind: Service
+   metadata:
+     name: rabbitmq
+     namespace: profile-service
+   spec:
+     selector:
+       app: rabbitmq
+     ports:
+       - name: amqp
+         port: 5672
+         targetPort: 5672
+       - name: management
+         port: 15672
+         targetPort: 15672
+   ```
+
+2. **Worker Services**
+   ```yaml
+   apiVersion: v1
+   kind: Service
+   metadata:
+     name: profile-worker
+     namespace: profile-service
+   spec:
+     selector:
+       app: profile-worker
+     ports:
+       - name: metrics
+         port: 9090
+         targetPort: 9090
+   ```
+
+### Resource Management
+
+1. **Resource Limits**
+
+   - RabbitMQ:
+     - Memory: 512Mi
+     - CPU: 500m
+   - Email Worker:
+     - Memory: 256Mi
+     - CPU: 200m
+   - Image Worker:
+     - Memory: 512Mi
+     - CPU: 500m
+
+2. **Scaling Configuration**
+   ```yaml
+   apiVersion: autoscaling/v2
+   kind: HorizontalPodAutoscaler
+   metadata:
+     name: profile-worker
+   spec:
+     scaleTargetRef:
+       apiVersion: apps/v1
+       kind: Deployment
+       name: profile-worker
+     minReplicas: 2
+     maxReplicas: 5
+     metrics:
+       - type: Resource
+         resource:
+           name: cpu
+           target:
+             type: Utilization
+             averageUtilization: 70
+   ```
+
+### Monitoring Integration
+
+1. **Prometheus ServiceMonitor**
+
+   ```yaml
+   apiVersion: monitoring.coreos.com/v1
+   kind: ServiceMonitor
+   metadata:
+     name: profile-worker
+     namespace: monitoring
+   spec:
+     selector:
+       matchLabels:
+         app: profile-worker
+     endpoints:
+       - port: metrics
+         interval: 15s
+   ```
+
+2. **Metrics Configuration**
+   - Queue depth metrics
+   - Message processing rates
+   - Error rates
+   - Resource utilization
+   - Processing times
+
+### Security Configuration
+
+1. **Network Policies**
+
+   ```yaml
+   apiVersion: networking.k8s.io/v1
+   kind: NetworkPolicy
+   metadata:
+     name: profile-worker
+     namespace: profile-service
+   spec:
+     podSelector:
+       matchLabels:
+         app: profile-worker
+     policyTypes:
+       - Ingress
+       - Egress
+     ingress:
+       - from:
+           - podSelector:
+               matchLabels:
+                 app: rabbitmq
+         ports:
+           - protocol: TCP
+             port: 5672
+     egress:
+       - to:
+           - podSelector:
+               matchLabels:
+                 app: profile-storage
+         ports:
+           - protocol: TCP
+             port: 8080
+   ```
+
+2. **Security Context**
+   ```yaml
+   securityContext:
+     runAsNonRoot: true
+     runAsUser: 1000
+     runAsGroup: 1000
+     fsGroup: 1000
+   ```
+
+### Health Checks
+
+1. **Liveness Probe**
+
+   ```yaml
+   livenessProbe:
+     httpGet:
+       path: /health
+       port: 8080
+     initialDelaySeconds: 30
+     periodSeconds: 10
+   ```
+
+2. **Readiness Probe**
+   ```yaml
+   readinessProbe:
+     httpGet:
+       path: /ready
+       port: 8080
+     initialDelaySeconds: 5
+     periodSeconds: 5
+   ```
+
+### Environment Configuration
+
+1. **ConfigMap**
+
+   ```yaml
+   apiVersion: v1
+   kind: ConfigMap
+   metadata:
+     name: profile-worker-config
+     namespace: profile-service
+   data:
+     RABBITMQ_HOST: "rabbitmq"
+     RABBITMQ_PORT: "5672"
+     WORKER_CONCURRENCY: "5"
+     BATCH_SIZE: "10"
+   ```
+
+2. **Secrets**
+   ```yaml
+   apiVersion: v1
+   kind: Secret
+   metadata:
+     name: profile-worker-secrets
+     namespace: profile-service
+   type: Opaque
+   data:
+     RABBITMQ_USER: base64_encoded
+     RABBITMQ_PASSWORD: base64_encoded
+     AI_API_KEY: base64_encoded
+   ```
+
+### Deployment Strategy
+
+1. **Rolling Update**
+
+   ```yaml
+   strategy:
+     type: RollingUpdate
+     rollingUpdate:
+       maxSurge: 1
+       maxUnavailable: 0
+   ```
+
+2. **Pod Disruption Budget**
+   ```yaml
+   apiVersion: policy/v1
+   kind: PodDisruptionBudget
+   metadata:
+     name: profile-worker
+   spec:
+     minAvailable: 1
+     selector:
+       matchLabels:
+         app: profile-worker
+   ```

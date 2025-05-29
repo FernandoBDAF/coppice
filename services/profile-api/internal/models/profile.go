@@ -4,11 +4,13 @@ import (
 	"errors"
 	"strings"
 	"time"
+
+	"github.com/gofrs/uuid"
 )
 
 // Profile represents a user profile
 type Profile struct {
-	ID        string    `json:"id"`
+	ID        uuid.UUID `json:"id"`
 	FirstName string    `json:"first_name"`
 	LastName  string    `json:"last_name"`
 	Email     string    `json:"email"`

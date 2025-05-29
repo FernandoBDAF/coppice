@@ -10,3 +10,4 @@ labels:
   - pairs:
       app.kubernetes.io/name: profile-storage
       app.kubernetes.io/part-of: profile-service
+ 

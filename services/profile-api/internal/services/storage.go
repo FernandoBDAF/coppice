@@ -266,6 +266,8 @@ func (c *StorageClient) GetProfiles(ctx context.Context) ([]*models.Profile, err
 		metrics.RecordGetProfiles(time.Since(start))
 	}()
 
+	
+
 	resp, err := c.doRequest(ctx, "GET", "/profiles", nil)
 	if err != nil {
 		metrics.RecordError()

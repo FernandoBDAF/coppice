@@ -11,3 +11,4 @@ labels:
   - pairs:
       app.kubernetes.io/name: auth
       app.kubernetes.io/part-of: profile-service
+ 
