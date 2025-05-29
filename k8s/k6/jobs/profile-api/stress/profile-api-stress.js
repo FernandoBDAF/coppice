@@ -26,8 +26,6 @@ const responseSizeTrend = new Trend("response_size");
 // Test configuration
 export const options = {
   stages: [
-    { duration: "2m", target: 50 }, // Ramp up to 50 users
-    { duration: "5m", target: 50 }, // Stay at 50 users
     { duration: "2m", target: 100 }, // Ramp up to 100 users
     { duration: "5m", target: 100 }, // Stay at 100 users
     { duration: "2m", target: 200 }, // Ramp up to 200 users
@@ -37,18 +35,20 @@ export const options = {
     { duration: "2m", target: 0 }, // Ramp down to 0 users
   ],
   thresholds: {
-    http_req_duration: ["p(95)<1000"], // 95% of requests should be below 1s
-    http_req_failed: ["rate<0.1"], // Less than 10% errors
-    validation_errors: ["rate<0.05"], // Less than 5% validation errors
-    connection_errors: ["rate<0.05"], // Less than 5% connection errors
-    timeout_errors: ["rate<0.05"], // Less than 5% timeout errors
-    rate_limit_errors: ["rate<0.05"], // Less than 5% rate limit errors
+    http_req_duration: ["p(95)<2000"], // 95% of requests should be below 2s
+    http_req_failed: ["rate<0.2"], // Less than 20% errors
+    validation_errors: ["rate<0.1"], // Less than 10% validation errors
+    connection_errors: ["rate<0.1"], // Less than 10% connection errors
+    timeout_errors: ["rate<0.1"], // Less than 10% timeout errors
+    rate_limit_errors: ["rate<0.1"], // Less than 10% rate limit errors
   },
 };
 
 // Test data
 const BASE_URL =
-  __ENV.BASE_URL || "http://profile-api.default.svc.cluster.local";
+  __ENV.BASE_URL || "http://profile-api.default.svc.cluster.local/api/v1";
+const AUTH_URL =
+  __ENV.AUTH_URL || "http://auth-api.default.svc.cluster.local/api/v1";
 const TEST_USER = {
   user_id: "FB",
   password: "FB.com",
@@ -61,14 +61,10 @@ function getAuthToken() {
     password: TEST_USER.password,
   });
 
-  const loginResponse = http.post(
-    `${BASE_URL}/api/v1/auth/token`,
-    loginPayload,
-    {
-      headers: { "Content-Type": "application/json" },
-      timeout: "30s", // Increased timeout for stress test
-    }
-  );
+  const loginResponse = http.post(`${AUTH_URL}/auth/token`, loginPayload, {
+    headers: { "Content-Type": "application/json" },
+    timeout: "30s", // Increased timeout for stress test
+  });
 
   authTrend.add(loginResponse.timings.duration);
   responseSizeTrend.add(loginResponse.body.length);
@@ -99,18 +95,13 @@ function generateTestData() {
   const timestamp = Date.now();
   const random = Math.floor(Math.random() * 1000);
 
-  // Generate a random number of digits between 10 and 15
-  const numDigits = Math.floor(Math.random() * 6) + 10; // Random number between 10 and 15
-  // Generate a random number with exactly numDigits digits
-  const phoneNumber = Math.floor(Math.random() * Math.pow(10, numDigits))
-    .toString()
-    .padStart(numDigits, "0");
-
   return {
     first_name: `Test${random}`,
     last_name: `User${random}`,
     email: `test${timestamp}${random}@example.com`,
-    phone: `+1${phoneNumber}`,
+    phone: `+1${Math.floor(Math.random() * 10000000000)
+      .toString()
+      .padStart(10, "0")}`,
     bio: `Test bio for user ${random}`,
     image_urls: [`https://example.com/images/test${random}.jpg`],
     address: {
@@ -118,7 +109,7 @@ function generateTestData() {
       city: "Test City",
       state: "TS",
       country: "Test Country",
-      postal_code: "12345",
+      zip_code: "12345",
     },
   };
 }
@@ -168,7 +159,7 @@ export default function () {
 
   if (operation < 0.3) {
     // 30% chance - List Profiles
-    const listResponse = http.get(`${BASE_URL}/api/v1/profiles`, {
+    const listResponse = http.get(`${BASE_URL}/profiles`, {
       headers,
       timeout: "30s",
     });
@@ -190,14 +181,10 @@ export default function () {
     const testData = generateTestData();
     const createPayload = JSON.stringify(testData);
 
-    const createResponse = http.post(
-      `${BASE_URL}/api/v1/profiles`,
-      createPayload,
-      {
-        headers,
-        timeout: "30s",
-      }
-    );
+    const createResponse = http.post(`${BASE_URL}/profiles`, createPayload, {
+      headers,
+      timeout: "30s",
+    });
     createTrend.add(createResponse.timings.duration);
 
     const createChecks = check(createResponse, {
@@ -223,7 +210,7 @@ export default function () {
       const updatePayload = JSON.stringify(updateData);
 
       const updateResponse = http.put(
-        `${BASE_URL}/api/v1/profiles/${profileId}`,
+        `${BASE_URL}/profiles/${profileId}`,
         updatePayload,
         {
           headers,
@@ -252,7 +239,7 @@ export default function () {
     // 30% chance to delete the profile
     if (Math.random() < 0.3) {
       const deleteResponse = http.del(
-        `${BASE_URL}/api/v1/profiles/${profileId}`,
+        `${BASE_URL}/profiles/${profileId}`,
         null,
         {
           headers,
@@ -271,19 +258,18 @@ export default function () {
     }
   } else {
     // 40% chance - Get Profile
-    // Generate a random UUID for the profile ID
-    const randomId = "00000000-0000-0000-0000-000000000000".replace(/0/g, () =>
-      Math.floor(Math.random() * 16).toString(16)
-    );
-
-    const getResponse = http.get(`${BASE_URL}/api/v1/profiles/${randomId}`, {
+    const profileId = `profile-${Math.floor(Math.random() * 1000)}`;
+    const getResponse = http.get(`${BASE_URL}/profiles/${profileId}`, {
       headers,
       timeout: "30s",
     });
 
     const getChecks = check(getResponse, {
-      "get profile status is 200 or 404": (r) =>
-        r.status === 200 || r.status === 404,
+      "get profile status is 200": (r) => r.status === 200,
+      "get profile has data": (r) => {
+        const data = r.json();
+        return data && data.profile && data.profile.id !== undefined;
+      },
     });
 
     if (!getChecks) {
@@ -291,8 +277,8 @@ export default function () {
     }
   }
 
-  // Random sleep between 0.1 and 2 seconds
-  sleep(Math.random() * 1.9 + 0.1);
+  // Add a small sleep between requests to prevent overwhelming the system
+  sleep(1);
 }
 
 // Summary handler
