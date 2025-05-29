@@ -11,7 +11,7 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./services/profile-storage/internal/database/migrations:/docker-entrypoint-initdb.d
+      - ./services/profile-service/internal/database/migrations:/docker-entrypoint-initdb.d
     networks:
       - profile-network
     healthcheck:

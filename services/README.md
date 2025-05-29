@@ -20,14 +20,33 @@ The Profile Service Microservices architecture provides a scalable, maintainable
 ```
 ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
 │  Profile    │     │    Auth     │     │  Storage    │
-│    API      │◄────┤    API      │◄────┤   API       │
+│   Service   │◄────┤   Service   │◄────┤   Service   │
 └──────┬──────┘     └─────────────┘     └──────┬──────┘
        │                                       │
        ▼                                       ▼
 ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
 │   Cache     │     │   Queue     │     │   Worker    │
-│    API      │◄────┤    API      │◄────┤   Service   │
+│   Service   │◄────┤   Service   │◄────┤   Service   │
 └─────────────┘     └─────────────┘     └─────────────┘
+```
+
+### Service Structure
+
+Each service follows a consistent structure:
+
+```
+[service-name]-service/
+├── cmd/              # Application entry points
+├── internal/         # Private application code
+│   ├── config/      # Configuration
+│   ├── domain/      # Business logic
+│   ├── ports/       # Interface definitions
+│   └── adapters/    # External adapters
+├── pkg/             # Public libraries
+├── test/            # Additional test files
+├── Dockerfile       # Service container definition
+├── go.mod           # Go module definition
+└── README.md        # Service documentation
 ```
 
 ## Implementation Standards
