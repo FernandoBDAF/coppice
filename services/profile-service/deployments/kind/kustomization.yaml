@@ -13,7 +13,7 @@ metadata:
 resources:
   - ../kubernetes
   # Development dependencies (temporary - remove when real cache-service is available)
-  - profile-dependencies.yaml # Local to kind/ directory
+  # - profile-dependencies.yaml # Local to kind/ directory
   # Monitoring (ConfigMap only - no Prometheus Operator required)
   - monitoring-configmap.yaml # Local to kind/ directory
 

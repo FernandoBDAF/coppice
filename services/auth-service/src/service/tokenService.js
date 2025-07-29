@@ -5,7 +5,7 @@ import { v4 as uuidv4 } from "uuid";
 class TokenService {
   async generateTokens(user) {
     const jti = uuidv4(); // Generate unique token ID
-    
+
     const tokenPayload = {
       userId: user.id,
       email: user.email,
@@ -18,24 +18,24 @@ class TokenService {
     const accessToken = jwt.sign(
       {
         ...tokenPayload,
-        tokenType: 'ACCESS_TOKEN',
+        tokenType: "ACCESS_TOKEN",
       },
       config.jwt.privateKeySecret,
-      { 
+      {
         expiresIn: config.jwt.accessTokenExpiry,
-        algorithm: "HS256" // Use HMAC instead of RSA for simplicity
+        algorithm: "HS256", // Use HMAC instead of RSA for simplicity
       }
     );
 
     const refreshToken = jwt.sign(
       {
         ...tokenPayload,
-        tokenType: 'REFRESH_TOKEN',
+        tokenType: "REFRESH_TOKEN",
       },
       config.jwt.privateKeySecret,
-      { 
+      {
         expiresIn: config.jwt.refreshTokenExpiry,
-        algorithm: "HS256"
+        algorithm: "HS256",
       }
     );
 
@@ -47,20 +47,28 @@ class TokenService {
   }
 
   async verifyToken(token) {
-    return jwt.verify(token, config.jwt.publicKeySecret || config.jwt.privateKeySecret, {
-      algorithms: ["HS256"]
-    });
+    return jwt.verify(
+      token,
+      config.jwt.publicKeySecret || config.jwt.privateKeySecret,
+      {
+        algorithms: ["HS256"],
+      }
+    );
   }
 
   async verifyRefreshToken(refreshToken) {
-    const decoded = jwt.verify(refreshToken, config.jwt.publicKeySecret || config.jwt.privateKeySecret, {
-      algorithms: ["HS256"]
-    });
-    
-    if (decoded.tokenType !== 'REFRESH_TOKEN') {
-      throw new Error('Invalid refresh token type');
+    const decoded = jwt.verify(
+      refreshToken,
+      config.jwt.publicKeySecret || config.jwt.privateKeySecret,
+      {
+        algorithms: ["HS256"],
+      }
+    );
+
+    if (decoded.tokenType !== "REFRESH_TOKEN") {
+      throw new Error("Invalid refresh token type");
     }
-    
+
     return decoded;
   }
 

@@ -27,6 +27,30 @@ func NewBatchMessageHandler(batchService *service.AdvancedBatchOperationsService
 	}
 }
 
+// CanHandle checks if this handler can process the given routing key
+func (h *BatchMessageHandler) CanHandle(routingKey string) bool {
+	supportedKeys := h.GetSupportedRoutingKeys()
+	for _, key := range supportedKeys {
+		if key == routingKey {
+			return true
+		}
+	}
+	return false
+}
+
+// GetSupportedRoutingKeys returns the routing keys this handler supports
+func (h *BatchMessageHandler) GetSupportedRoutingKeys() []string {
+	return []string{
+		"batch.process",
+		"batch.profile.process",
+		"batch.auth.process",
+		"batch.status",
+		"batch.operation.create",
+		"batch.operation.update",
+		"batch.operation.delete",
+	}
+}
+
 // Handle processes batch-related messages based on routing key
 func (h *BatchMessageHandler) Handle(ctx context.Context, msg *Message) (*MessageResponse, error) {
 	startTime := time.Now()

@@ -2,10 +2,12 @@ package messaging
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 
 	"microservices/services/profile-storage/internal/domain/models"
@@ -15,7 +17,7 @@ import (
 // StorageHandler handles storage-related messages with enhanced Phase 2 capabilities
 type StorageHandler struct {
 	profileService *service.ProfileService
-	batchService   *service.BatchOperationsService
+	batchService   *service.AdvancedBatchOperationsService
 	log            *zap.Logger
 	metrics        *StorageMetrics
 }
@@ -34,12 +36,36 @@ type StorageMetrics struct {
 }
 
 // NewStorageHandler creates a new enhanced storage handler
-func NewStorageHandler(profileService *service.ProfileService, batchService *service.BatchOperationsService) *StorageHandler {
+func NewStorageHandler(profileService *service.ProfileService, batchService *service.AdvancedBatchOperationsService) *StorageHandler {
 	return &StorageHandler{
 		profileService: profileService,
 		batchService:   batchService,
 		log:            zap.L().Named("storage_handler"),
 		metrics:        &StorageMetrics{},
+	}
+}
+
+// CanHandle checks if this handler can process the given routing key
+func (h *StorageHandler) CanHandle(routingKey string) bool {
+	supportedKeys := h.GetSupportedRoutingKeys()
+	for _, key := range supportedKeys {
+		if key == routingKey {
+			return true
+		}
+	}
+	return false
+}
+
+// GetSupportedRoutingKeys returns the routing keys this handler supports
+func (h *StorageHandler) GetSupportedRoutingKeys() []string {
+	return []string{
+		"storage.create",
+		"storage.update",
+		"storage.delete",
+		"storage.batch",
+		"storage.profile.create",
+		"storage.profile.update",
+		"storage.profile.delete",
 	}
 }
 
@@ -279,8 +305,14 @@ func (h *StorageHandler) handleBatchEnhanced(ctx context.Context, msg *Message, 
 		return nil, fmt.Errorf("failed to optimize batch operations: %w", err)
 	}
 
+	// Convert old format to new BatchRequest format
+	batchRequest, err := h.convertToBatchRequest(batchTask.BatchID, optimizedOperations, batchTask.Options)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert batch request: %w", err)
+	}
+
 	// Process batch with enhanced options
-	result, err := h.batchService.ProcessBatch(ctx, optimizedOperations, batchTask.Options)
+	result, err := h.batchService.ProcessBatch(ctx, batchRequest)
 	if err != nil {
 		return nil, fmt.Errorf("failed to process batch: %w", err)
 	}
@@ -294,8 +326,75 @@ func (h *StorageHandler) handleBatchEnhanced(ctx context.Context, msg *Message, 
 		"result":             result,
 		"completed_at":       time.Now(),
 		"processing_time_ms": time.Since(startTime).Milliseconds(),
-		"efficiency_score":   h.calculateBatchEfficiency(len(batchTask.Operations), len(optimizedOperations), result.ProcessingDuration),
+		"efficiency_score":   h.calculateBatchEfficiency(len(batchTask.Operations), len(optimizedOperations), result.Duration),
 	}, nil
+}
+
+// convertToBatchRequest converts old StorageTask format to new BatchRequest format
+func (h *StorageHandler) convertToBatchRequest(batchID string, operations []models.StorageTask, oldOptions models.BatchOptions) (*models.BatchRequest, error) {
+	// Convert operations from StorageTask to BatchOperationItem
+	batchOps := make([]models.BatchOperationItem, len(operations))
+	for i, op := range operations {
+		// Convert operation data to JSON
+		dataBytes, err := json.Marshal(op.Data)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal operation data: %w", err)
+		}
+
+		// Map operation type
+		var batchOpType models.BatchOperationType
+		switch op.Operation {
+		case "create":
+			batchOpType = models.BatchOperationCreate
+		case "update":
+			batchOpType = models.BatchOperationUpdate
+		case "delete":
+			batchOpType = models.BatchOperationDelete
+		default:
+			batchOpType = models.BatchOperationCreate // default fallback
+		}
+
+		batchOps[i] = models.BatchOperationItem{
+			ID:         uuid.New().String(),
+			Operation:  batchOpType,
+			Data:       json.RawMessage(dataBytes),
+			ExternalID: fmt.Sprintf("legacy_%d", i),
+			Metadata:   make(map[string]string),
+		}
+
+		// Add profile ID to metadata if present
+		if op.ProfileID != nil {
+			batchOps[i].Metadata["profile_id"] = op.ProfileID.String()
+		}
+	}
+
+	// Convert old BatchOptions to new BatchOptions
+	newOptions := models.BatchOptions{
+		Mode:                models.BatchModeIndividual, // Default to individual processing
+		FailureHandling:     models.BatchContinueOnFail, // Continue on failure by default
+		MaxConcurrency:      10,                         // Default concurrency
+		TimeoutPerOperation: 30 * time.Second,
+		TotalTimeout:        10 * time.Minute,
+		ValidationLevel:     models.BatchValidationBasic,
+		EnableRollback:      false,
+		EnableProgressTrack: true,
+	}
+
+	// Note: Old options format no longer supported, using defaults
+	// Future enhancement: could check for specific option keys in metadata
+
+	// Create the batch request
+	request := &models.BatchRequest{
+		ID:          batchID,
+		Type:        "profile", // Assume profile type for legacy operations
+		Operations:  batchOps,
+		Options:     newOptions,
+		Metadata:    make(map[string]string),
+		RequestedBy: "legacy_handler",
+		CreatedAt:   time.Now(),
+	}
+
+	return request, nil
 }
 
 // Enhanced validation methods
@@ -614,22 +713,6 @@ func (h *StorageHandler) createErrorResponse(messageID string, err error, startT
 		ProcessedAt:    time.Now(),
 		ProcessingTime: time.Since(startTime),
 	}
-}
-
-// CanHandle checks if this handler can process the given routing key
-func (h *StorageHandler) CanHandle(routingKey string) bool {
-	supportedKeys := h.GetSupportedRoutingKeys()
-	for _, key := range supportedKeys {
-		if key == routingKey {
-			return true
-		}
-	}
-	return false
-}
-
-// GetSupportedRoutingKeys returns the routing keys this handler supports
-func (h *StorageHandler) GetSupportedRoutingKeys() []string {
-	return []string{"storage.create", "storage.update", "storage.delete", "storage.batch"}
 }
 
 // GetMetrics returns current handler metrics

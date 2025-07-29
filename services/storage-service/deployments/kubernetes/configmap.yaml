@@ -171,3 +171,7 @@ data:
   # Health Checks
   HEALTH_CHECK_INTERVAL: "30s"
   HEALTH_CHECK_TIMEOUT: "5s"
+
+  # Queue processing configuration
+  QUEUE_MAX_BATCH_SIZE: "100"
+  QUEUE_BATCH_TIMEOUT: "30s"

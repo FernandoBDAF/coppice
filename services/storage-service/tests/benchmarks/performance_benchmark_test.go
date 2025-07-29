@@ -9,34 +9,40 @@ import (
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
-	"go.uber.org/zap/zaptest"
 
 	"microservices/services/profile-storage/internal/domain/models"
 	"microservices/services/profile-storage/internal/domain/service"
 	"microservices/services/profile-storage/internal/infrastructure/repository"
 	"microservices/services/profile-storage/internal/messaging"
+
+	"github.com/jmoiron/sqlx"
 )
 
 // BenchmarkSuite manages benchmark test environment
 type BenchmarkSuite struct {
 	profileService   *service.ProfileService
-	batchService     *service.BatchOperationsService
+	batchService     *service.AdvancedBatchOperationsService
 	messageProcessor *messaging.MessageProcessor
 	storageHandler   *messaging.StorageHandler
 	logger           *zap.Logger
 	testData         []models.ProfileRequest
 }
 
-// setupBenchmarkSuite initializes the benchmark environment
-func setupBenchmarkSuite(b *testing.B) *BenchmarkSuite {
-	logger := zaptest.NewLogger(b)
-	zap.ReplaceGlobals(logger)
+func setupBenchmark() *BenchmarkSuite {
+	// Initialize logger
+	logger := zap.NewNop()
 
-	// For benchmarks, we'll use in-memory mock implementations
-	// In a real scenario, you'd use actual database connections
+	// Create mock database connection (in real benchmarks, this would be a test database)
+	db := &sqlx.DB{} // Mock for now
+
+	// Create repositories
 	profileRepo := repository.NewProfileRepository(nil) // Mock repository
+	authRepo := repository.NewAuthRepository(nil)       // Mock repository
+
+	// Create services
 	profileService := service.NewProfileService(profileRepo)
-	batchService := service.NewBatchOperationsService(profileService)
+	authService := service.NewAuthService(authRepo)
+	batchService := service.NewAdvancedBatchOperationsService(profileService, authService, db)
 
 	// Setup messaging components
 	messageProcessor := messaging.NewMessageProcessor()
@@ -72,9 +78,57 @@ func generateTestData(count int) []models.ProfileRequest {
 	return data
 }
 
+// Helper function to convert old StorageTask format to new BatchRequest format
+func convertToBatchRequest(operations []models.StorageTask) *models.BatchRequest {
+	batchOps := make([]models.BatchOperationItem, len(operations))
+	for i, op := range operations {
+		// Convert operation data to JSON
+		dataBytes, _ := json.Marshal(op.Data)
+
+		// Map operation type
+		var batchOpType models.BatchOperationType
+		switch op.Operation {
+		case "create":
+			batchOpType = models.BatchOperationCreate
+		case "update":
+			batchOpType = models.BatchOperationUpdate
+		case "delete":
+			batchOpType = models.BatchOperationDelete
+		default:
+			batchOpType = models.BatchOperationCreate
+		}
+
+		batchOps[i] = models.BatchOperationItem{
+			ID:         uuid.New().String(),
+			Operation:  batchOpType,
+			Data:       json.RawMessage(dataBytes),
+			ExternalID: fmt.Sprintf("bench_%d", i),
+			Metadata:   make(map[string]string),
+		}
+	}
+
+	return &models.BatchRequest{
+		ID:         uuid.New().String(),
+		Type:       "profile",
+		Operations: batchOps,
+		Options: models.BatchOptions{
+			Mode:                models.BatchModeIndividual,
+			FailureHandling:     models.BatchContinueOnFail,
+			MaxConcurrency:      10,
+			TimeoutPerOperation: 30 * time.Second,
+			TotalTimeout:        5 * time.Minute,
+			ValidationLevel:     models.BatchValidationBasic,
+			EnableRollback:      false,
+			EnableProgressTrack: true,
+		},
+		RequestedBy: "benchmark",
+		CreatedAt:   time.Now(),
+	}
+}
+
 // BenchmarkSingleMessageProcessing benchmarks individual message processing
 func BenchmarkSingleMessageProcessing(b *testing.B) {
-	suite := setupBenchmarkSuite(b)
+	suite := setupBenchmark()
 	ctx := context.Background()
 
 	b.ResetTimer()
@@ -121,7 +175,7 @@ func BenchmarkSingleMessageProcessing(b *testing.B) {
 
 // BenchmarkBatchProcessing benchmarks batch operation processing
 func BenchmarkBatchProcessing(b *testing.B) {
-	suite := setupBenchmarkSuite(b)
+	suite := setupBenchmark()
 	ctx := context.Background()
 
 	// Test different batch sizes
@@ -148,15 +202,11 @@ func BenchmarkBatchProcessing(b *testing.B) {
 					}
 				}
 
-				options := models.BatchOptions{
-					TransactionMode: false,
-					MaxBatchSize:    size * 2,
-					Timeout:         60 * time.Second,
-					FailureMode:     "continue",
-				}
+				// Convert to new BatchRequest format
+				batchRequest := convertToBatchRequest(operations)
 
 				// Process batch
-				_, err := suite.batchService.ProcessBatch(ctx, operations, options)
+				_, err := suite.batchService.ProcessBatch(ctx, batchRequest)
 				if err != nil {
 					b.Errorf("Batch processing failed: %v", err)
 				}
@@ -168,7 +218,7 @@ func BenchmarkBatchProcessing(b *testing.B) {
 
 // BenchmarkConcurrentMessageProcessing benchmarks concurrent message processing
 func BenchmarkConcurrentMessageProcessing(b *testing.B) {
-	suite := setupBenchmarkSuite(b)
+	suite := setupBenchmark()
 	ctx := context.Background()
 
 	// Test different concurrency levels
@@ -222,7 +272,7 @@ func BenchmarkConcurrentMessageProcessing(b *testing.B) {
 
 // BenchmarkMessageHandlerPerformance benchmarks storage handler performance
 func BenchmarkMessageHandlerPerformance(b *testing.B) {
-	suite := setupBenchmarkSuite(b)
+	suite := setupBenchmark()
 	ctx := context.Background()
 
 	// Test different operation types
@@ -296,7 +346,7 @@ func BenchmarkMessageHandlerPerformance(b *testing.B) {
 
 // BenchmarkValidationPerformance benchmarks message validation performance
 func BenchmarkValidationPerformance(b *testing.B) {
-	suite := setupBenchmarkSuite(b)
+	suite := setupBenchmark()
 
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
@@ -325,7 +375,7 @@ func BenchmarkValidationPerformance(b *testing.B) {
 
 // BenchmarkBatchOptimization benchmarks batch operation optimization
 func BenchmarkBatchOptimization(b *testing.B) {
-	suite := setupBenchmarkSuite(b)
+	suite := setupBenchmark()
 	ctx := context.Background()
 
 	// Create operations with duplicates for optimization testing
@@ -349,15 +399,11 @@ func BenchmarkBatchOptimization(b *testing.B) {
 			}
 		}
 
-		options := models.BatchOptions{
-			TransactionMode: false,
-			MaxBatchSize:    300,
-			Timeout:         120 * time.Second,
-			FailureMode:     "continue",
-		}
+		// Convert to new BatchRequest format
+		batchRequest := convertToBatchRequest(operations)
 
 		// Process optimized batch
-		_, err := suite.batchService.ProcessBatch(ctx, operations, options)
+		_, err := suite.batchService.ProcessBatch(ctx, batchRequest)
 		if err != nil {
 			b.Errorf("Optimized batch processing failed: %v", err)
 		}
@@ -367,7 +413,7 @@ func BenchmarkBatchOptimization(b *testing.B) {
 
 // BenchmarkMemoryUsage benchmarks memory usage patterns
 func BenchmarkMemoryUsage(b *testing.B) {
-	suite := setupBenchmarkSuite(b)
+	suite := setupBenchmark()
 	ctx := context.Background()
 
 	b.ResetTimer()
@@ -402,14 +448,10 @@ func BenchmarkMemoryUsage(b *testing.B) {
 			}
 		}
 
-		options := models.BatchOptions{
-			TransactionMode: false,
-			MaxBatchSize:    1200,
-			Timeout:         180 * time.Second,
-			FailureMode:     "continue",
-		}
+		// Convert to new BatchRequest format
+		batchRequest := convertToBatchRequest(operations)
 
-		_, err := suite.batchService.ProcessBatch(ctx, operations, options)
+		_, err := suite.batchService.ProcessBatch(ctx, batchRequest)
 		if err != nil {
 			b.Errorf("Memory benchmark batch processing failed: %v", err)
 		}
@@ -418,7 +460,7 @@ func BenchmarkMemoryUsage(b *testing.B) {
 
 // BenchmarkThroughputMeasurement benchmarks overall system throughput
 func BenchmarkThroughputMeasurement(b *testing.B) {
-	suite := setupBenchmarkSuite(b)
+	suite := setupBenchmark()
 	ctx := context.Background()
 
 	// Test sustained throughput
@@ -479,7 +521,7 @@ func BenchmarkThroughputMeasurement(b *testing.B) {
 
 // BenchmarkAutoTuningPerformance benchmarks auto-tuning algorithms
 func BenchmarkAutoTuningPerformance(b *testing.B) {
-	suite := setupBenchmarkSuite(b)
+	suite := setupBenchmark()
 	ctx := context.Background()
 
 	b.ResetTimer()
@@ -503,15 +545,12 @@ func BenchmarkAutoTuningPerformance(b *testing.B) {
 			}
 		}
 
-		options := models.BatchOptions{
-			TransactionMode: false,
-			MaxBatchSize:    0, // Let auto-tuning decide
-			Timeout:         120 * time.Second,
-			FailureMode:     "continue",
-		}
+		// Convert to new BatchRequest format with auto-tuning enabled
+		batchRequest := convertToBatchRequest(operations)
+		batchRequest.Options.MaxConcurrency = 0 // Let auto-tuning decide
 
 		// Process batch with auto-tuning enabled
-		_, err := suite.batchService.ProcessBatch(ctx, operations, options)
+		_, err := suite.batchService.ProcessBatch(ctx, batchRequest)
 		if err != nil {
 			b.Errorf("Auto-tuning benchmark failed: %v", err)
 		}

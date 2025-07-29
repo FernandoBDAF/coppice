@@ -186,6 +186,7 @@ kubectl get events --sort-by=.metadata.creationTimestamp --field-selector involv
 
 ---
 
+// This is probably wrong, need to review!!
 ### Step 3.5: 🗄️ Deploy Development Dependencies (Kind Only)
 
 **What it does**: Creates temporary services needed for local development
@@ -219,7 +220,7 @@ kubectl run redis-test --rm -i --tty --image redis:7-alpine -- redis-cli -h redi
 ### Step 4: �� Deploy Application (Kind-Optimized)
 
 **What it does**: Creates the Profile Service application pods optimized for Kind development
-
+// missing steps: before that, build the docker image and deploy to kind
 #### Deploy:
 
 ```bash

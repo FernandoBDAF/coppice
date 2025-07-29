@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.21-alpine AS builder
+FROM golang:1.22-alpine AS builder
 
 # Set working directory
 WORKDIR /app
@@ -34,9 +34,6 @@ WORKDIR /app
 
 # Copy the binary from builder stage
 COPY --from=builder /app/cache-service .
-
-# Copy configuration files if they exist
-COPY --from=builder /app/configs ./configs/ 2>/dev/null || true
 
 # Change ownership to cache user
 RUN chown -R cache:cache /app

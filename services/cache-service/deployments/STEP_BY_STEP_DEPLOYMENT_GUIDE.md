@@ -72,7 +72,7 @@ kubectl get pods -n monitoring 2>/dev/null || echo "Monitoring namespace not fou
 #### Deploy:
 
 ```bash
-kubectl apply -f deployments/k8s/secret.yaml
+kubectl apply -f deployments/kubernetes/secret.yaml
 ```
 
 #### Verification Commands:
@@ -109,7 +109,7 @@ kubectl create secret generic cache-service-secret \
 #### Deploy:
 
 ```bash
-kubectl apply -f deployments/k8s/configmap.yaml
+kubectl apply -f deployments/kubernetes/configmap.yaml
 ```
 
 #### Critical Observation Commands:
@@ -145,7 +145,7 @@ kubectl get configmap cache-service-config -o yaml | grep -E "(POOL_SIZE|TTL|CIR
 #### Deploy:
 
 ```bash
-kubectl apply -f deployments/k8s/service.yaml
+kubectl apply -f deployments/kubernetes/service.yaml
 ```
 
 #### Critical Observation Commands:
@@ -167,6 +167,8 @@ kubectl describe service cache-service | grep -A 5 "Selector:"
 
 **Expected Impact**: ✅ Service `cache-service` with HTTP (8080), gRPC (9090), and metrics (8081) ports
 
+// this kind of comment is very good and should be all over the deployment documentation
+// it makes clear what to look for in each manifest ipact and what is the consequence of every command
 **⚠️ What to Look For**:
 
 - Service should have `ClusterIP` type for internal communication
@@ -179,6 +181,7 @@ kubectl describe service cache-service | grep -A 5 "Selector:"
 
 **What it does**: Creates Redis StatefulSet with persistence for cache storage
 
+// great section
 **⚠️ Why StatefulSet?** Redis requires:
 
 - **Persistent storage** for data durability
@@ -189,8 +192,10 @@ kubectl describe service cache-service | grep -A 5 "Selector:"
 
 ```bash
 # Deploy Redis StatefulSet with persistence
-kubectl apply -f deployments/k8s/redis-statefulset.yaml
+kubectl apply -f deployments/kubernetes/redis-statefulset.yaml
 ```
+
+<!-- // error with the command above: error: resource mapping not found for name: "redis-metrics" namespace: "default" from "deployments/kubernetes/redis-statefulset.yaml": no matches for kind "ServiceMonitor" in version "monitoring.coreos.com/v1" -->
 
 #### Critical Observation Commands:
 
@@ -218,6 +223,9 @@ kubectl get endpoints redis-service
 kubectl exec -it redis-0 -- redis-cli -a "$(kubectl get secret cache-service-secret -o jsonpath='{.data.CACHE_REDIS_PASSWORD}' | base64 -d)" ping
 ```
 
+// most commands above returned: 
+<!-- Defaulted container "redis" out of: redis, redis-exporter-->
+
 **Expected Impact**: ✅ Redis StatefulSet running with persistent volumes
 
 **🔧 Redis-Specific Validation**:
@@ -244,7 +252,7 @@ kubectl exec -it redis-0 -- redis-cli config get save
 #### Deploy:
 
 ```bash
-kubectl apply -f deployments/k8s/deployment.yaml
+kubectl apply -f deployments/kubernetes/deployment.yaml
 ```
 
 #### Critical Observation Commands:

@@ -30,7 +30,7 @@ type IntegrationTestSuite struct {
 	config           *config.Config
 	dbManager        *database.ConnectionManager
 	profileService   *service.ProfileService
-	batchService     *service.BatchOperationsService
+	batchService     *service.AdvancedBatchOperationsService
 	messageProcessor *messaging.MessageProcessor
 	consumer         *messaging.Consumer
 	dlqManager       *messaging.DLQManager
@@ -89,8 +89,15 @@ func (suite *IntegrationTestSuite) SetupSuite() error {
 
 	// Setup services
 	profileRepo := repository.NewProfileRepository(suite.dbManager.GetDB())
+	authRepo := repository.NewAuthRepository(suite.dbManager.GetDB())
+
 	suite.profileService = service.NewProfileService(profileRepo)
-	suite.batchService = service.NewBatchOperationsService(suite.profileService)
+	authService := service.NewAuthService(authRepo)
+	suite.batchService = service.NewAdvancedBatchOperationsService(
+		suite.profileService,
+		authService,
+		suite.dbManager.GetDB(),
+	)
 
 	// Setup RabbitMQ connection
 	var err error
@@ -263,10 +270,14 @@ func (suite *IntegrationTestSuite) TestBatchOperations() {
 	}
 
 	batchTask := messaging.NewBatchStorageTask(operations, models.BatchOptions{
-		TransactionMode: false,
-		MaxBatchSize:    10,
-		Timeout:         30 * time.Second,
-		FailureMode:     "continue",
+		Mode:                models.BatchModeIndividual,
+		FailureHandling:     models.BatchContinueOnFail,
+		MaxConcurrency:      10,
+		TimeoutPerOperation: 5 * time.Second,
+		TotalTimeout:        30 * time.Second,
+		ValidationLevel:     models.BatchValidationBasic,
+		EnableRollback:      false,
+		EnableProgressTrack: true,
 	})
 
 	payload, err := json.Marshal(batchTask)

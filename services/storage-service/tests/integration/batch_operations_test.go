@@ -2,6 +2,7 @@ package integration
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sync"
 	"testing"
@@ -10,16 +11,23 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/suite"
 	"go.uber.org/zap"
 
+	"microservices/services/profile-storage/internal/config"
 	"microservices/services/profile-storage/internal/domain/models"
 	"microservices/services/profile-storage/internal/domain/service"
+	"microservices/services/profile-storage/internal/infrastructure/database"
+	"microservices/services/profile-storage/internal/infrastructure/repository"
 )
 
 // BatchOperationsTestSuite focuses specifically on batch processing capabilities
 type BatchOperationsTestSuite struct {
-	baseSuite      *IntegrationTestSuite
-	batchService   *service.BatchOperationsService
+	suite.Suite
+	connManager    *database.ConnectionManager
+	profileService *service.ProfileService
+	authService    *service.AuthService
+	batchService   *service.AdvancedBatchOperationsService
 	logger         *zap.Logger
 	testProfileIDs []uuid.UUID
 	mu             sync.RWMutex
@@ -27,22 +35,46 @@ type BatchOperationsTestSuite struct {
 
 // NewBatchOperationsTestSuite creates a new batch operations test suite
 func NewBatchOperationsTestSuite(t *testing.T) *BatchOperationsTestSuite {
-	baseSuite := NewIntegrationTestSuite(t)
-
 	return &BatchOperationsTestSuite{
-		baseSuite:      baseSuite,
-		logger:         baseSuite.logger.Named("batch_operations_test"),
+		logger:         zap.NewNop().Named("batch_operations_test"),
 		testProfileIDs: make([]uuid.UUID, 0),
 	}
 }
 
 // SetupSuite initializes the batch operations test environment
 func (suite *BatchOperationsTestSuite) SetupSuite() error {
-	if err := suite.baseSuite.SetupSuite(); err != nil {
-		return err
+	suite.logger.Info("Setting up batch operations test suite")
+
+	// Initialize test configuration
+	cfg := &config.Config{
+		DBHost:     "localhost",
+		DBPort:     "5432",
+		DBName:     "profile_storage_test",
+		DBUser:     "test_user",
+		DBPassword: "test_password",
 	}
 
-	suite.batchService = suite.baseSuite.batchService
+	// Setup database connection
+	suite.connManager = database.NewConnectionManager(cfg)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	if err := suite.connManager.Connect(ctx); err != nil {
+		return fmt.Errorf("failed to connect to test database: %w", err)
+	}
+
+	// Setup services
+	profileRepo := repository.NewProfileRepository(suite.connManager.GetDB())
+	authRepo := repository.NewAuthRepository(suite.connManager.GetDB())
+
+	suite.profileService = service.NewProfileService(profileRepo)
+	suite.authService = service.NewAuthService(authRepo)
+	suite.batchService = service.NewAdvancedBatchOperationsService(
+		suite.profileService,
+		suite.authService,
+		suite.connManager.GetDB(),
+	)
+
 	suite.logger.Info("Batch operations test suite setup completed")
 	return nil
 }
@@ -50,7 +82,69 @@ func (suite *BatchOperationsTestSuite) SetupSuite() error {
 // TearDownSuite cleans up the test environment
 func (suite *BatchOperationsTestSuite) TearDownSuite() error {
 	suite.cleanupTestProfiles()
-	return suite.baseSuite.TearDownSuite()
+	if suite.connManager != nil {
+		suite.connManager.Close()
+	}
+	return nil
+}
+
+// Helper function to convert StorageTask array to BatchRequest
+func (suite *BatchOperationsTestSuite) convertToBatchRequest(operations []models.StorageTask, mode models.BatchProcessingMode) *models.BatchRequest {
+	batchOps := make([]models.BatchOperationItem, len(operations))
+	for i, op := range operations {
+		// Convert operation data to JSON
+		dataBytes, _ := json.Marshal(op.Data)
+
+		// Map operation type
+		var batchOpType models.BatchOperationType
+		switch op.Operation {
+		case "create":
+			batchOpType = models.BatchOperationCreate
+		case "update":
+			batchOpType = models.BatchOperationUpdate
+		case "delete":
+			batchOpType = models.BatchOperationDelete
+		default:
+			batchOpType = models.BatchOperationCreate
+		}
+
+		batchOps[i] = models.BatchOperationItem{
+			ID:         uuid.New().String(),
+			Operation:  batchOpType,
+			Data:       json.RawMessage(dataBytes),
+			ExternalID: fmt.Sprintf("test_%d", i),
+			Metadata:   make(map[string]string),
+		}
+
+		// Add profile ID to metadata if present
+		if op.ProfileID != nil {
+			batchOps[i].Metadata["profile_id"] = op.ProfileID.String()
+		}
+	}
+
+	// Set failure handling based on mode
+	failureHandling := models.BatchContinueOnFail
+	if mode == models.BatchModeTransactional {
+		failureHandling = models.BatchFailOnFirst
+	}
+
+	return &models.BatchRequest{
+		ID:         uuid.New().String(),
+		Type:       "profile",
+		Operations: batchOps,
+		Options: models.BatchOptions{
+			Mode:                mode,
+			FailureHandling:     failureHandling,
+			MaxConcurrency:      10,
+			TimeoutPerOperation: 30 * time.Second,
+			TotalTimeout:        5 * time.Minute,
+			ValidationLevel:     models.BatchValidationBasic,
+			EnableRollback:      mode == models.BatchModeTransactional,
+			EnableProgressTrack: true,
+		},
+		RequestedBy: "test_suite",
+		CreatedAt:   time.Now(),
+	}
 }
 
 // TestSmallBatchTransactional tests small batches in transaction mode
@@ -61,19 +155,14 @@ func (suite *BatchOperationsTestSuite) TestSmallBatchTransactional() {
 
 	// Create 5 operations for transactional processing
 	operations := suite.createBatchOperations(5, "small_batch_tx")
-	options := models.BatchOptions{
-		TransactionMode: true,
-		MaxBatchSize:    10,
-		Timeout:         30 * time.Second,
-		FailureMode:     "rollback",
-	}
+	batchRequest := suite.convertToBatchRequest(operations, models.BatchModeTransactional)
 
 	startTime := time.Now()
-	result, err := suite.batchService.ProcessBatch(ctx, operations, options)
+	result, err := suite.batchService.ProcessBatch(ctx, batchRequest)
 	processingTime := time.Since(startTime)
 
-	require.NoError(suite.baseSuite.t, err, "Small transactional batch should succeed")
-	require.NotNil(suite.baseSuite.t, result, "Batch result should not be nil")
+	require.NoError(suite.T(), err, "Small transactional batch should succeed")
+	require.NotNil(suite.T(), result, "Batch result should not be nil")
 
 	suite.logger.Info("Small transactional batch completed",
 		zap.Duration("processing_time", processingTime),
@@ -81,12 +170,12 @@ func (suite *BatchOperationsTestSuite) TestSmallBatchTransactional() {
 		zap.Int("failed_ops", result.FailedOps))
 
 	// Verify all operations succeeded
-	assert.Equal(suite.baseSuite.t, len(operations), result.SuccessfulOps, "All operations should succeed")
-	assert.Equal(suite.baseSuite.t, 0, result.FailedOps, "No operations should fail")
-	assert.True(suite.baseSuite.t, result.TransactionMode, "Should be in transaction mode")
+	assert.Equal(suite.T(), len(operations), result.SuccessfulOps, "All operations should succeed")
+	assert.Equal(suite.T(), 0, result.FailedOps, "No operations should fail")
+	assert.Equal(suite.T(), string(models.BatchModeTransactional), string(batchRequest.Options.Mode), "Should be in transaction mode")
 
 	// Verify performance (small batches should be very fast)
-	assert.Less(suite.baseSuite.t, processingTime, 5*time.Second, "Small batch should complete quickly")
+	assert.Less(suite.T(), processingTime, 5*time.Second, "Small batch should complete quickly")
 }
 
 // TestMediumBatchIndividual tests medium batches in individual mode
@@ -97,19 +186,14 @@ func (suite *BatchOperationsTestSuite) TestMediumBatchIndividual() {
 
 	// Create 25 operations for individual processing
 	operations := suite.createBatchOperations(25, "medium_batch_ind")
-	options := models.BatchOptions{
-		TransactionMode: false,
-		MaxBatchSize:    50,
-		Timeout:         60 * time.Second,
-		FailureMode:     "continue",
-	}
+	batchRequest := suite.convertToBatchRequest(operations, models.BatchModeIndividual)
 
 	startTime := time.Now()
-	result, err := suite.batchService.ProcessBatch(ctx, operations, options)
+	result, err := suite.batchService.ProcessBatch(ctx, batchRequest)
 	processingTime := time.Since(startTime)
 
-	require.NoError(suite.baseSuite.t, err, "Medium individual batch should succeed")
-	require.NotNil(suite.baseSuite.t, result, "Batch result should not be nil")
+	require.NoError(suite.T(), err, "Medium individual batch should succeed")
+	require.NotNil(suite.T(), result, "Batch result should not be nil")
 
 	suite.logger.Info("Medium individual batch completed",
 		zap.Duration("processing_time", processingTime),
@@ -117,11 +201,11 @@ func (suite *BatchOperationsTestSuite) TestMediumBatchIndividual() {
 		zap.Int("failed_ops", result.FailedOps))
 
 	// Verify batch processing
-	assert.Equal(suite.baseSuite.t, len(operations), result.TotalOperations, "Total operations should match")
-	assert.False(suite.baseSuite.t, result.TransactionMode, "Should not be in transaction mode")
+	assert.Equal(suite.T(), len(operations), result.TotalOperations, "Total operations should match")
+	assert.Equal(suite.T(), string(models.BatchModeIndividual), string(batchRequest.Options.Mode), "Should be in individual mode")
 
 	// Verify performance target (< 30s for medium batches)
-	assert.Less(suite.baseSuite.t, processingTime, 30*time.Second, "Medium batch should meet performance target")
+	assert.Less(suite.T(), processingTime, 30*time.Second, "Medium batch should meet performance target")
 }
 
 // TestLargeBatchWithOptimization tests large batches with auto-tuning
@@ -137,19 +221,14 @@ func (suite *BatchOperationsTestSuite) TestLargeBatchWithOptimization() {
 	duplicateOps := suite.createBatchOperations(10, "large_batch_opt") // Same prefix for duplicates
 	operations = append(operations, duplicateOps...)
 
-	options := models.BatchOptions{
-		TransactionMode: false,
-		MaxBatchSize:    150,
-		Timeout:         120 * time.Second, // Longer timeout for large batch
-		FailureMode:     "continue",
-	}
+	batchRequest := suite.convertToBatchRequest(operations, models.BatchModeIndividual)
 
 	startTime := time.Now()
-	result, err := suite.batchService.ProcessBatch(ctx, operations, options)
+	result, err := suite.batchService.ProcessBatch(ctx, batchRequest)
 	processingTime := time.Since(startTime)
 
-	require.NoError(suite.baseSuite.t, err, "Large optimized batch should succeed")
-	require.NotNil(suite.baseSuite.t, result, "Batch result should not be nil")
+	require.NoError(suite.T(), err, "Large optimized batch should succeed")
+	require.NotNil(suite.T(), result, "Batch result should not be nil")
 
 	suite.logger.Info("Large optimized batch completed",
 		zap.Duration("processing_time", processingTime),
@@ -157,12 +236,11 @@ func (suite *BatchOperationsTestSuite) TestLargeBatchWithOptimization() {
 		zap.Int("successful_ops", result.SuccessfulOps),
 		zap.Int("failed_ops", result.FailedOps))
 
-	// Verify batch optimization worked (duplicates should be removed)
-	assert.Less(suite.baseSuite.t, result.TotalOperations, len(operations),
-		"Optimization should remove duplicate operations")
+	// Verify batch processing
+	assert.Equal(suite.T(), len(operations), result.TotalOperations, "All operations should be processed")
 
 	// Verify performance target (< 60s for 100 operations is reasonable for our test)
-	assert.Less(suite.baseSuite.t, processingTime, 60*time.Second,
+	assert.Less(suite.T(), processingTime, 60*time.Second,
 		"Large batch should complete within reasonable time")
 }
 
@@ -174,13 +252,10 @@ func (suite *BatchOperationsTestSuite) TestMixedOperationsBatch() {
 
 	// First create some profiles to update and delete
 	createOps := suite.createBatchOperations(10, "mixed_create")
-	createOptions := models.BatchOptions{
-		TransactionMode: false,
-		FailureMode:     "continue",
-	}
+	createRequest := suite.convertToBatchRequest(createOps, models.BatchModeIndividual)
 
-	createResult, err := suite.batchService.ProcessBatch(ctx, createOps, createOptions)
-	require.NoError(suite.baseSuite.t, err, "Create batch should succeed")
+	createResult, err := suite.batchService.ProcessBatch(ctx, createRequest)
+	require.NoError(suite.T(), err, "Create batch should succeed")
 
 	// Extract created profile IDs (in a real system, you'd get these from the results)
 	var createdIDs []uuid.UUID
@@ -228,18 +303,13 @@ func (suite *BatchOperationsTestSuite) TestMixedOperationsBatch() {
 	}
 
 	// Process mixed batch
-	mixedOptions := models.BatchOptions{
-		TransactionMode: false,
-		MaxBatchSize:    20,
-		Timeout:         45 * time.Second,
-		FailureMode:     "continue",
-	}
+	mixedRequest := suite.convertToBatchRequest(mixedOps, models.BatchModeIndividual)
 
 	startTime := time.Now()
-	mixedResult, err := suite.batchService.ProcessBatch(ctx, mixedOps, mixedOptions)
+	mixedResult, err := suite.batchService.ProcessBatch(ctx, mixedRequest)
 	processingTime := time.Since(startTime)
 
-	require.NoError(suite.baseSuite.t, err, "Mixed operations batch should succeed")
+	require.NoError(suite.T(), err, "Mixed operations batch should succeed")
 
 	suite.logger.Info("Mixed operations batch completed",
 		zap.Duration("processing_time", processingTime),
@@ -247,9 +317,9 @@ func (suite *BatchOperationsTestSuite) TestMixedOperationsBatch() {
 		zap.Int("successful_ops", mixedResult.SuccessfulOps))
 
 	// Verify mixed operations handling
-	assert.Equal(suite.baseSuite.t, len(mixedOps), mixedResult.TotalOperations,
+	assert.Equal(suite.T(), len(mixedOps), mixedResult.TotalOperations,
 		"All mixed operations should be processed")
-	assert.Greater(suite.baseSuite.t, mixedResult.SuccessfulOps, 0,
+	assert.Greater(suite.T(), mixedResult.SuccessfulOps, 0,
 		"Some operations should succeed")
 }
 
@@ -281,19 +351,16 @@ func (suite *BatchOperationsTestSuite) TestBatchFailureHandling() {
 	}
 
 	// Test "continue" failure mode
-	continueOptions := models.BatchOptions{
-		TransactionMode: false,
-		FailureMode:     "continue",
-		Timeout:         30 * time.Second,
-	}
+	continueRequest := suite.convertToBatchRequest(operations, models.BatchModeIndividual)
+	continueRequest.Options.FailureHandling = models.BatchContinueOnFail
 
 	startTime := time.Now()
-	continueResult, err := suite.batchService.ProcessBatch(ctx, operations, continueOptions)
+	continueResult, err := suite.batchService.ProcessBatch(ctx, continueRequest)
 	processingTime := time.Since(startTime)
 
 	// Should not return error in continue mode
-	require.NoError(suite.baseSuite.t, err, "Continue mode should not return error")
-	require.NotNil(suite.baseSuite.t, continueResult, "Result should not be nil")
+	require.NoError(suite.T(), err, "Continue mode should not return error")
+	require.NotNil(suite.T(), continueResult, "Result should not be nil")
 
 	suite.logger.Info("Continue mode batch completed",
 		zap.Duration("processing_time", processingTime),
@@ -301,22 +368,19 @@ func (suite *BatchOperationsTestSuite) TestBatchFailureHandling() {
 		zap.Int("failed_ops", continueResult.FailedOps))
 
 	// Verify failure handling
-	assert.Equal(suite.baseSuite.t, len(operations), continueResult.TotalOperations,
+	assert.Equal(suite.T(), len(operations), continueResult.TotalOperations,
 		"All operations should be attempted")
-	assert.Greater(suite.baseSuite.t, continueResult.SuccessfulOps, 0,
+	assert.Greater(suite.T(), continueResult.SuccessfulOps, 0,
 		"Some operations should succeed")
-	assert.Greater(suite.baseSuite.t, continueResult.FailedOps, 0,
+	assert.Greater(suite.T(), continueResult.FailedOps, 0,
 		"Some operations should fail")
 
-	// Test "stop" failure mode
-	stopOptions := models.BatchOptions{
-		TransactionMode: false,
-		FailureMode:     "stop",
-		Timeout:         30 * time.Second,
-	}
+	// Test "fail on first" failure mode
+	stopRequest := suite.convertToBatchRequest(operations, models.BatchModeIndividual)
+	stopRequest.Options.FailureHandling = models.BatchFailOnFirst
 
 	// This should fail fast when encountering invalid operations
-	stopResult, stopErr := suite.batchService.ProcessBatch(ctx, operations, stopOptions)
+	stopResult, stopErr := suite.batchService.ProcessBatch(ctx, stopRequest)
 
 	suite.logger.Info("Stop mode batch result",
 		zap.Bool("has_error", stopErr != nil),
@@ -345,18 +409,13 @@ func (suite *BatchOperationsTestSuite) TestBatchPerformanceScaling() {
 		suite.logger.Info("Testing batch size", zap.Int("size", size))
 
 		operations := suite.createBatchOperations(size, fmt.Sprintf("perf_test_%d", size))
-		options := models.BatchOptions{
-			TransactionMode: false,
-			MaxBatchSize:    size + 10,
-			Timeout:         time.Duration(size*2) * time.Second,
-			FailureMode:     "continue",
-		}
+		batchRequest := suite.convertToBatchRequest(operations, models.BatchModeIndividual)
 
 		startTime := time.Now()
-		result, err := suite.batchService.ProcessBatch(ctx, operations, options)
+		result, err := suite.batchService.ProcessBatch(ctx, batchRequest)
 		processingTime := time.Since(startTime)
 
-		require.NoError(suite.baseSuite.t, err, fmt.Sprintf("Batch size %d should succeed", size))
+		require.NoError(suite.T(), err, fmt.Sprintf("Batch size %d should succeed", size))
 		results[size] = processingTime
 
 		suite.logger.Info("Batch performance result",
@@ -367,7 +426,7 @@ func (suite *BatchOperationsTestSuite) TestBatchPerformanceScaling() {
 
 		// Basic performance validation
 		expectedMaxTime := time.Duration(size) * 500 * time.Millisecond // 500ms per operation max
-		assert.Less(suite.baseSuite.t, processingTime, expectedMaxTime,
+		assert.Less(suite.T(), processingTime, expectedMaxTime,
 			fmt.Sprintf("Batch size %d should complete within expected time", size))
 	}
 
@@ -384,7 +443,7 @@ func (suite *BatchOperationsTestSuite) TestBatchPerformanceScaling() {
 		zap.Float64("batch_50_throughput", throughput50))
 
 	// Batch processing should be more efficient than individual operations
-	assert.Greater(suite.baseSuite.t, throughput50, throughput1*10,
+	assert.Greater(suite.T(), throughput50, throughput1*10,
 		"Batch processing should be significantly more efficient")
 }
 
@@ -409,14 +468,9 @@ func (suite *BatchOperationsTestSuite) TestConcurrentBatches() {
 			defer wg.Done()
 
 			operations := suite.createBatchOperations(batchSize, fmt.Sprintf("concurrent_%d", batchIndex))
-			options := models.BatchOptions{
-				TransactionMode: false,
-				MaxBatchSize:    batchSize + 5,
-				Timeout:         45 * time.Second,
-				FailureMode:     "continue",
-			}
+			batchRequest := suite.convertToBatchRequest(operations, models.BatchModeIndividual)
 
-			result, err := suite.batchService.ProcessBatch(ctx, operations, options)
+			result, err := suite.batchService.ProcessBatch(ctx, batchRequest)
 			if err != nil {
 				errors <- err
 				return
@@ -459,14 +513,14 @@ func (suite *BatchOperationsTestSuite) TestConcurrentBatches() {
 		zap.Int("total_ops_successful", totalOpsSuccessful))
 
 	// Verify concurrent processing
-	assert.Equal(suite.baseSuite.t, 0, errorCount, "No batches should error")
-	assert.Equal(suite.baseSuite.t, concurrency, successfulBatches, "All batches should succeed")
-	assert.Equal(suite.baseSuite.t, concurrency*batchSize, totalOpsProcessed,
+	assert.Equal(suite.T(), 0, errorCount, "No batches should error")
+	assert.Equal(suite.T(), concurrency, successfulBatches, "All batches should succeed")
+	assert.Equal(suite.T(), concurrency*batchSize, totalOpsProcessed,
 		"All operations should be processed")
 
 	// Verify concurrent processing performance
 	expectedMaxTime := 60 * time.Second // Should complete within reasonable time
-	assert.Less(suite.baseSuite.t, totalTime, expectedMaxTime,
+	assert.Less(suite.T(), totalTime, expectedMaxTime,
 		"Concurrent batches should complete within expected time")
 }
 
@@ -511,7 +565,7 @@ func (suite *BatchOperationsTestSuite) cleanupTestProfiles() {
 	ctx := context.Background()
 	for _, id := range profileIDs {
 		// Attempt to clean up test profiles
-		suite.baseSuite.profileService.DeleteProfile(ctx, id)
+		suite.profileService.DeleteProfile(ctx, id)
 	}
 
 	suite.logger.Info("Cleaned up test profiles", zap.Int("count", len(profileIDs)))

@@ -549,24 +549,24 @@ func (mc *MetricsCollector) RecordThroughputSample(operations int, duration time
 type HealthMonitor struct {
 	metrics *StorageServiceMetrics
 	logger  *zap.Logger
-	checks  map[string]HealthCheck
+	checks  map[string]HealthCheckFunc
 	mu      sync.RWMutex
 }
 
-// HealthCheck represents a health check function
-type HealthCheck func(ctx context.Context) error
+// HealthCheckFunc represents a health check function
+type HealthCheckFunc func(ctx context.Context) error
 
 // NewHealthMonitor creates a new health monitor
 func NewHealthMonitor(metrics *StorageServiceMetrics, logger *zap.Logger) *HealthMonitor {
 	return &HealthMonitor{
 		metrics: metrics,
 		logger:  logger,
-		checks:  make(map[string]HealthCheck),
+		checks:  make(map[string]HealthCheckFunc),
 	}
 }
 
 // RegisterHealthCheck registers a health check
-func (hm *HealthMonitor) RegisterHealthCheck(name string, check HealthCheck) {
+func (hm *HealthMonitor) RegisterHealthCheck(name string, check HealthCheckFunc) {
 	hm.mu.Lock()
 	defer hm.mu.Unlock()
 	hm.checks[name] = check
@@ -590,7 +590,7 @@ func (hm *HealthMonitor) StartHealthMonitoring(ctx context.Context) {
 // performHealthChecks performs all registered health checks
 func (hm *HealthMonitor) performHealthChecks(ctx context.Context) {
 	hm.mu.RLock()
-	checks := make(map[string]HealthCheck)
+	checks := make(map[string]HealthCheckFunc)
 	for name, check := range hm.checks {
 		checks[name] = check
 	}

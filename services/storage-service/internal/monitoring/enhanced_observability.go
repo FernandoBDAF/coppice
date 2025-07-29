@@ -96,7 +96,7 @@ type EnhancedMetricsCollector struct {
 
 // EnhancedHealthMonitor provides comprehensive health monitoring
 type EnhancedHealthMonitor struct {
-	checks        map[string]HealthCheck
+	checks        map[string]EnhancedHealthCheck
 	overallStatus HealthStatus
 	lastUpdate    time.Time
 	connManager   *database.ConnectionManager
@@ -106,8 +106,8 @@ type EnhancedHealthMonitor struct {
 	mu            sync.RWMutex
 }
 
-// HealthCheck represents a single health check
-type HealthCheck struct {
+// EnhancedHealthCheck represents a single health check
+type EnhancedHealthCheck struct {
 	Name        string                 `json:"name"`
 	Status      HealthStatus           `json:"status"`
 	Message     string                 `json:"message"`
@@ -128,11 +128,11 @@ const (
 
 // HealthReport provides a comprehensive health report
 type HealthReport struct {
-	OverallStatus HealthStatus           `json:"overall_status"`
-	Timestamp     time.Time              `json:"timestamp"`
-	Checks        map[string]HealthCheck `json:"checks"`
-	Summary       HealthSummary          `json:"summary"`
-	Uptime        time.Duration          `json:"uptime"`
+	OverallStatus HealthStatus                   `json:"overall_status"`
+	Timestamp     time.Time                      `json:"timestamp"`
+	Checks        map[string]EnhancedHealthCheck `json:"checks"`
+	Summary       HealthSummary                  `json:"summary"`
+	Uptime        time.Duration                  `json:"uptime"`
 }
 
 // HealthSummary provides a summary of health check results
@@ -523,7 +523,7 @@ func NewEnhancedMetricsCollector() *EnhancedMetricsCollector {
 // NewEnhancedHealthMonitor creates a new enhanced health monitor
 func NewEnhancedHealthMonitor(connManager *database.ConnectionManager, batchService *service.AdvancedBatchOperationsService, authService *service.AuthService) *EnhancedHealthMonitor {
 	monitor := &EnhancedHealthMonitor{
-		checks:        make(map[string]HealthCheck),
+		checks:        make(map[string]EnhancedHealthCheck),
 		overallStatus: HealthStatusUnknown,
 		connManager:   connManager,
 		batchService:  batchService,
@@ -540,31 +540,31 @@ func NewEnhancedHealthMonitor(connManager *database.ConnectionManager, batchServ
 // registerHealthChecks registers all health checks
 func (ehm *EnhancedHealthMonitor) registerHealthChecks() {
 	// Database health check
-	ehm.checks["database"] = HealthCheck{
+	ehm.checks["database"] = EnhancedHealthCheck{
 		Name:   "Database Connection",
 		Status: HealthStatusUnknown,
 	}
 
 	// Auth service health check
-	ehm.checks["auth_service"] = HealthCheck{
+	ehm.checks["auth_service"] = EnhancedHealthCheck{
 		Name:   "Auth Service",
 		Status: HealthStatusUnknown,
 	}
 
 	// Batch service health check
-	ehm.checks["batch_service"] = HealthCheck{
+	ehm.checks["batch_service"] = EnhancedHealthCheck{
 		Name:   "Batch Service",
 		Status: HealthStatusUnknown,
 	}
 
 	// Memory health check
-	ehm.checks["memory"] = HealthCheck{
+	ehm.checks["memory"] = EnhancedHealthCheck{
 		Name:   "Memory Usage",
 		Status: HealthStatusUnknown,
 	}
 
 	// Performance health check
-	ehm.checks["performance"] = HealthCheck{
+	ehm.checks["performance"] = EnhancedHealthCheck{
 		Name:   "Performance Metrics",
 		Status: HealthStatusUnknown,
 	}
@@ -600,9 +600,9 @@ func (ehm *EnhancedHealthMonitor) RunAllChecks() {
 }
 
 // runHealthCheck runs a specific health check
-func (ehm *EnhancedHealthMonitor) runHealthCheck(name string) HealthCheck {
+func (ehm *EnhancedHealthMonitor) runHealthCheck(name string) EnhancedHealthCheck {
 	startTime := time.Now()
-	check := HealthCheck{
+	check := EnhancedHealthCheck{
 		Name:        name,
 		LastChecked: startTime,
 	}
@@ -625,11 +625,11 @@ func (ehm *EnhancedHealthMonitor) runHealthCheck(name string) HealthCheck {
 }
 
 // checkDatabase checks database connectivity
-func (ehm *EnhancedHealthMonitor) checkDatabase() HealthCheck {
+func (ehm *EnhancedHealthMonitor) checkDatabase() EnhancedHealthCheck {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	check := HealthCheck{
+	check := EnhancedHealthCheck{
 		Name:        "Database Connection",
 		LastChecked: time.Now(),
 	}
@@ -654,8 +654,8 @@ func (ehm *EnhancedHealthMonitor) checkDatabase() HealthCheck {
 }
 
 // checkAuthService checks auth service health
-func (ehm *EnhancedHealthMonitor) checkAuthService() HealthCheck {
-	check := HealthCheck{
+func (ehm *EnhancedHealthMonitor) checkAuthService() EnhancedHealthCheck {
+	check := EnhancedHealthCheck{
 		Name:        "Auth Service",
 		LastChecked: time.Now(),
 	}
@@ -673,8 +673,8 @@ func (ehm *EnhancedHealthMonitor) checkAuthService() HealthCheck {
 }
 
 // checkBatchService checks batch service health
-func (ehm *EnhancedHealthMonitor) checkBatchService() HealthCheck {
-	check := HealthCheck{
+func (ehm *EnhancedHealthMonitor) checkBatchService() EnhancedHealthCheck {
+	check := EnhancedHealthCheck{
 		Name:        "Batch Service",
 		LastChecked: time.Now(),
 	}
@@ -703,8 +703,8 @@ func (ehm *EnhancedHealthMonitor) checkBatchService() HealthCheck {
 }
 
 // checkMemory checks memory usage
-func (ehm *EnhancedHealthMonitor) checkMemory() HealthCheck {
-	check := HealthCheck{
+func (ehm *EnhancedHealthMonitor) checkMemory() EnhancedHealthCheck {
+	check := EnhancedHealthCheck{
 		Name:        "Memory Usage",
 		LastChecked: time.Now(),
 	}
@@ -734,8 +734,8 @@ func (ehm *EnhancedHealthMonitor) checkMemory() HealthCheck {
 }
 
 // checkPerformance checks overall performance health
-func (ehm *EnhancedHealthMonitor) checkPerformance() HealthCheck {
-	check := HealthCheck{
+func (ehm *EnhancedHealthMonitor) checkPerformance() EnhancedHealthCheck {
+	check := EnhancedHealthCheck{
 		Name:        "Performance Metrics",
 		LastChecked: time.Now(),
 		Status:      HealthStatusHealthy,

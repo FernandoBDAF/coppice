@@ -17,6 +17,7 @@ import (
 	"microservices/services/profile-storage/internal/domain/service"
 	"microservices/services/profile-storage/internal/infrastructure/database"
 	"microservices/services/profile-storage/internal/infrastructure/repository"
+	"microservices/services/profile-storage/internal/messaging"
 	"microservices/services/profile-storage/internal/pkg/logger"
 )
 
@@ -63,14 +64,65 @@ func main() {
 	batchService := service.NewAdvancedBatchOperationsService(profileService, authService, connManager.GetDB())
 
 	// Initialize messaging components if queue is enabled
-	// TODO: Queue processing infrastructure is complete but temporarily disabled
-	// due to interface compatibility issues that need resolution
+	var consumer *messaging.Consumer
+	var messageProcessor *messaging.MessageProcessor
 	if cfg.QueueEnabled {
-		logger.Info("Queue processing infrastructure ready but requires handler interface alignment")
-		// Queue processing will be enabled after resolving MessageHandler interface compatibility
-		logger.Info("Queue processing disabled - interface compatibility resolution required")
+		logger.Info("Queue processing enabled - initializing consumer")
+
+		// Create message processor
+		messageProcessor = messaging.NewMessageProcessor()
+
+		// Create and register message handlers
+		authHandler := messaging.NewAuthHandler(authService)
+		batchHandler := messaging.NewBatchMessageHandler(batchService)
+		storageHandler := messaging.NewStorageHandler(profileService, batchService)
+
+		// Register handlers with the processor
+		if err := messageProcessor.RegisterHandler(authHandler); err != nil {
+			logger.Fatal("Failed to register auth handler", logger.ErrorField(err))
+		}
+		if err := messageProcessor.RegisterHandler(batchHandler); err != nil {
+			logger.Fatal("Failed to register batch handler", logger.ErrorField(err))
+		}
+		if err := messageProcessor.RegisterHandler(storageHandler); err != nil {
+			logger.Fatal("Failed to register storage handler", logger.ErrorField(err))
+		}
+
+		// Create consumer configuration
+		consumerConfig := &messaging.ConsumerConfig{
+			ConnectionURL:   cfg.RabbitMQURL,
+			QueueName:       cfg.RabbitMQQueue,
+			ExchangeName:    cfg.RabbitMQExchange,
+			RoutingKey:      cfg.RabbitMQRoutingKey,
+			ConsumerTag:     cfg.RabbitMQConsumerTag,
+			PrefetchCount:   cfg.RabbitMQPrefetch,
+			ProcessTimeout:  cfg.RabbitMQProcessTimeout,
+			ReconnectDelay:  cfg.RabbitMQReconnectDelay,
+			DLQEnabled:      cfg.DLQEnabled,
+			DLQExchangeName: cfg.DLQExchangeName,
+			DLQQueueName:    cfg.DLQQueueName,
+			MaxRetries:      cfg.DLQMaxRetries,
+		}
+
+		// Create consumer
+		consumer = messaging.NewConsumer(consumerConfig, messageProcessor)
+
+		// Start consumer in goroutine
+		go func() {
+			logger.Info("Starting queue consumer",
+				logger.String("queue", cfg.RabbitMQQueue),
+				logger.String("exchange", cfg.RabbitMQExchange),
+				logger.String("routing_key", cfg.RabbitMQRoutingKey))
+
+			if err := consumer.Start(context.Background()); err != nil {
+				logger.Error("Failed to start queue consumer", logger.ErrorField(err))
+				// Don't exit - HTTP server should continue running
+			}
+		}()
+
+		logger.Info("Queue processing enabled and active")
 	} else {
-		logger.Info("Queue processing disabled")
+		logger.Info("Queue processing disabled - running in HTTP-only mode")
 	}
 
 	// Create REST handlers
@@ -138,10 +190,15 @@ func main() {
 	logger.Info("Shutting down storage service...")
 
 	// Graceful shutdown
-	// The original code had consumer and messageProcessor variables here,
-	// but they are no longer declared.
-	// If queue processing is re-enabled, these would need to be re-introduced.
-	// For now, removing the unused variables.
+	// Shutdown queue consumer first
+	if consumer != nil {
+		logger.Info("Shutting down queue consumer...")
+		if err := consumer.Stop(); err != nil {
+			logger.Error("Queue consumer shutdown error", logger.ErrorField(err))
+		} else {
+			logger.Info("Queue consumer stopped successfully")
+		}
+	}
 
 	// TODO: Add proper REST server shutdown method
 	logger.Info("REST server shutdown - manual implementation needed")

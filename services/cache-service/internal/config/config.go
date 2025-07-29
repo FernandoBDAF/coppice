@@ -93,6 +93,11 @@ func Load() (*Config, error) {
 	viper.AutomaticEnv()
 	viper.SetEnvPrefix("CACHE")
 
+	// Explicit bindings for nested struct fields
+	viper.BindEnv("redis.password", "CACHE_REDIS_PASSWORD")
+	viper.BindEnv("redis.host", "CACHE_REDIS_HOST")
+	viper.BindEnv("redis.port", "CACHE_REDIS_PORT")
+
 	// Read config file if it exists
 	if err := viper.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
