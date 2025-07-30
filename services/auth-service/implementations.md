@@ -1,0 +1,6 @@
+- auth-service should not talk to the cache, only to the DB
+- the table users should only be accessed by the auth-service
+- implement all user's endpoints here, the repo will be in the storage-service only accessible by the auth-service
+- profile-service (all services in general) should talk with auth to get users
+- create a DB exclusive to auth
+- check gRPC to node

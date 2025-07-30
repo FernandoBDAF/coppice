@@ -105,7 +105,7 @@ The Profile Service serves as the **primary entry point and orchestrator** for t
 
 ### **Profile Management**
 
-```http
+   ```http
 GET    /api/v1/profiles              # List profiles with pagination
 POST   /api/v1/profiles              # Create new profile
 GET    /api/v1/profiles/{id}         # Get profile by ID
@@ -115,16 +115,16 @@ DELETE /api/v1/profiles/{id}         # Delete profile
 
 ### **Multi-Worker Task Processing**
 
-```http
+   ```http
 POST   /api/v1/profiles/{id}/tasks   # Submit task (profile/email/image)
 GET    /api/v1/profiles/{id}/tasks   # Get profile tasks
 GET    /api/v1/tasks/{task_id}       # Get task status
 DELETE /api/v1/tasks/{task_id}       # Cancel task
-```
+   ```
 
 ### **Health & Monitoring**
 
-```http
+   ```http
 GET    /health                       # Service health check
 GET    /ready                        # Kubernetes readiness probe
 GET    /live                         # Kubernetes liveness probe
@@ -145,7 +145,7 @@ LOG_LEVEL=info                      # Logging level
 
 #### **Service Integration**
 
-```bash
+   ```bash
 # Queue Service
 QUEUE_SERVICE_HOST=queue-service    # Queue service hostname
 QUEUE_SERVICE_PORT=8080             # Queue service port
@@ -168,7 +168,7 @@ AUTH_SERVICE_PORT=8080              # Auth service port
 
 #### **Multi-Worker Task Configuration**
 
-```bash
+   ```bash
 # Task Type Routing
 ROUTING_PROFILE_KEY=profile.task    # Profile worker routing key
 ROUTING_EMAIL_KEY=email.send        # Email worker routing key
@@ -182,7 +182,7 @@ TASK_TIMEOUT_IMAGE=300s             # Image task timeout
 
 #### **Circuit Breaker Configuration**
 
-```bash
+   ```bash
 # Circuit Breaker Settings
 CIRCUIT_BREAKER_TIMEOUT=3s          # Request timeout
 CIRCUIT_BREAKER_ERROR_THRESHOLD=50  # Error percentage threshold
@@ -193,7 +193,7 @@ CIRCUIT_BREAKER_RESET_TIMEOUT=30s   # Reset timeout
 
 ### **Local Development (Kind)**
 
-```bash
+   ```bash
 # 1. Deploy to Kind cluster
 cd deployments/kind
 kubectl apply -k .

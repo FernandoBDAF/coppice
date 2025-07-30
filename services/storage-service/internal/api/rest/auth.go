@@ -196,7 +196,7 @@ func (h *AuthHandler) ListUsers(w http.ResponseWriter, r *http.Request) {
 }
 
 // Authentication Endpoints
-
+// REVIEW: should we really connect to the db from here? or should we use the auth service?
 // AuthenticateUser authenticates a user with email and password
 func (h *AuthHandler) AuthenticateUser(w http.ResponseWriter, r *http.Request) {
 	h.log.Info("Authenticating user via REST API")

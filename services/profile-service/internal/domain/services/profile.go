@@ -359,7 +359,7 @@ func (s *ProfileService) UpdateProfile(ctx context.Context, id string, req *mode
 					zap.Error(err))
 			} else {
 				s.logger.Debug("Successfully invalidated profile cache after update",
-					zap.String("id", id))
+		zap.String("id", id))
 			}
 		}()
 	}
@@ -404,7 +404,7 @@ func (s *ProfileService) DeleteProfile(ctx context.Context, id string) error {
 					zap.Error(err))
 			} else {
 				s.logger.Debug("Successfully invalidated profile cache after deletion",
-					zap.String("id", id))
+		zap.String("id", id))
 			}
 		}()
 	}
@@ -497,7 +497,7 @@ func (s *ProfileService) SubmitTask(ctx context.Context, profileID string, req *
 
 	logger.LogInfo(ctx, "Successfully processed multi-worker task",
 		zap.String("profile_id", profileID),
-		zap.String("task_id", task.ID.String()),
+				zap.String("task_id", task.ID.String()),
 		zap.String("task_type", req.Type),
 		zap.String("routing_key", routingKey),
 		zap.String("worker_target", s.getWorkerTarget(req.Type)))
@@ -518,12 +518,12 @@ func (s *ProfileService) SubmitEmailTask(ctx context.Context, profileID string, 
 		logger.LogError(ctx, "Email task validation failed", err,
 			zap.String("profile_id", profileID),
 			zap.String("email_to", emailPayload.To))
-		return nil, &ProfileError{
+			return nil, &ProfileError{
 			Code:    400,
 			Message: fmt.Sprintf("Email task validation failed: %s", err.Error()),
-			Err:     err,
+				Err:     err,
+			}
 		}
-	}
 
 	// Create task request - convert struct to map for validation compatibility
 	payloadMap := map[string]interface{}{

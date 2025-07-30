@@ -55,11 +55,11 @@ type StorageConfig struct {
 
 // CacheConfig holds the cache service configuration
 type CacheConfig struct {
-	Host    string        `env:"CACHE_HOST" default:"cache-service"`
-	Port    int           `env:"CACHE_PORT" default:"8080"`
+	Host    string        `env:"CACHE_SERVICE_HOST" default:"cache-service"`
+	Port    int           `env:"CACHE_SERVICE_PORT" default:"8080"`
 	Enabled bool          `env:"CACHE_ENABLED" default:"true"`
-	Timeout time.Duration `env:"CACHE_TIMEOUT" default:"5s"`
-	Retries int           `env:"CACHE_RETRIES" default:"3"`
+	Timeout time.Duration `env:"CACHE_SERVICE_TIMEOUT" default:"5s"`
+	Retries int           `env:"CACHE_SERVICE_RETRIES" default:"3"`
 	TTL     struct {
 		Profile time.Duration `env:"CACHE_PROFILE_TTL" default:"1h"`
 		Session time.Duration `env:"CACHE_SESSION_TTL" default:"24h"`
@@ -246,11 +246,11 @@ func LoadConfig() *Config {
 			RetryDelay: time.Duration(getEnvAsInt("STORAGE_RETRY_DELAY_MS", 100)) * time.Millisecond,
 		},
 		Cache: CacheConfig{
-			Host:    getEnv("CACHE_HOST", "cache-service"),
-			Port:    getEnvAsInt("CACHE_PORT", 8080),
+			Host:    getEnv("CACHE_SERVICE_HOST", "cache-service"),
+			Port:    getEnvAsInt("CACHE_SERVICE_PORT", 8080),
 			Enabled: getEnvBool("CACHE_ENABLED", true),
-			Timeout: getDurationEnv("CACHE_TIMEOUT", "5s"),
-			Retries: getEnvAsInt("CACHE_RETRIES", 3),
+			Timeout: getDurationEnv("CACHE_SERVICE_TIMEOUT", "5s"),
+			Retries: getEnvAsInt("CACHE_SERVICE_RETRIES", 3),
 			TTL: struct {
 				Profile time.Duration `env:"CACHE_PROFILE_TTL" default:"1h"`
 				Session time.Duration `env:"CACHE_SESSION_TTL" default:"24h"`

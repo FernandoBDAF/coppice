@@ -64,6 +64,7 @@ func main() {
 	batchService := service.NewAdvancedBatchOperationsService(profileService, authService, connManager.GetDB())
 
 	// Initialize messaging components if queue is enabled
+	// REVIEW: should we really connect to queue directly?
 	var consumer *messaging.Consumer
 	var messageProcessor *messaging.MessageProcessor
 	if cfg.QueueEnabled {
@@ -155,6 +156,7 @@ func main() {
 	}()
 
 	// Create and start gRPC server
+	// REVIEW: implement gRPC server
 	go func() {
 		lis, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.GRPCPort))
 		if err != nil {

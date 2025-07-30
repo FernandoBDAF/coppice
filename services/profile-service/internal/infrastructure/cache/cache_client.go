@@ -402,7 +402,7 @@ func (c *CacheClient) SetProfile(ctx context.Context, profileID string, data []b
 
 // Ping tests the connection to the cache service
 func (c *CacheClient) Ping(ctx context.Context) error {
-	url := fmt.Sprintf("%s/api/v1/health", c.baseURL)
+	url := fmt.Sprintf("%s/health", c.baseURL)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {

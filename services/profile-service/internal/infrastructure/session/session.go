@@ -44,7 +44,9 @@ func NewSessionManager(authClient *services.AuthServiceClient, cacheClient cache
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
+	logger.Info("I am here before the ping")
 	if err := cacheClient.Ping(ctx); err != nil {
+		logger.Info("I am here inside the error")
 		logger.Error("Failed to connect to cache service", zap.Error(err))
 		return nil, fmt.Errorf("failed to connect to cache service: %w", err)
 	}

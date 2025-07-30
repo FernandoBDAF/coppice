@@ -248,6 +248,7 @@ func (s *AuthService) GetUserByEmail(ctx context.Context, email string) (*models
 }
 
 // AuthenticateUser authenticates a user with email and password
+// REVIEW: the authentication logic should be in the auth-service, not in the rest api
 func (s *AuthService) AuthenticateUser(ctx context.Context, email, password, ipAddress, userAgent string) (*models.AuthUser, error) {
 	startTime := time.Now()
 	s.log.Info("Authenticating user",

@@ -30,7 +30,7 @@ func NewAuthRepository(db *sqlx.DB) *AuthRepository {
 }
 
 // User Operations
-
+// REVIEW: should we connect to the db from here or use the auth service?
 // CreateUser creates a new user in the database
 func (r *AuthRepository) CreateUser(ctx context.Context, user *models.AuthUser) error {
 	r.log.Info("Creating new auth user",

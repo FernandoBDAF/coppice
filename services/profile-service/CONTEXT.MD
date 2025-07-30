@@ -789,14 +789,14 @@ type MetricsService struct {
 func NewMetricsService() *MetricsService {
     return &MetricsService{
         tasksSubmitted: prometheus.NewCounterVec(
-            prometheus.CounterOpts{
-                Name: "profile_tasks_submitted_total",
-                Help: "Total number of tasks submitted by type",
-            },
-            []string{"type", "routing_key"},
+        prometheus.CounterOpts{
+            Name: "profile_tasks_submitted_total",
+            Help: "Total number of tasks submitted by type",
+        },
+        []string{"type", "routing_key"},
         ),
         taskDuration: prometheus.NewHistogramVec(
-            prometheus.HistogramOpts{
+        prometheus.HistogramOpts{
                 Name: "profile_task_submission_duration_seconds",
                 Help: "Task submission duration in seconds",
                 Buckets: prometheus.DefBuckets,
@@ -932,7 +932,7 @@ func (s *ProfileService) GetProfile(ctx context.Context, profileID string) (*Pro
 
     // 2. Cache miss - get from storage service
     profile, err := s.storageClient.GetProfile(ctx, profileID)
-    if err != nil {
+        if err != nil {
         return nil, err
     }
 

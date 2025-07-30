@@ -236,24 +236,24 @@ GET    /metrics                             # Prometheus metrics
 
 #### **Server Configuration**
 
-```bash
+   ```bash
 SERVER_HOST=0.0.0.0                        # Server bind address
 SERVER_PORT=8080                           # HTTP server port
 GRPC_PORT=9090                             # gRPC server port
-```
+   ```
 
 #### **Database Configuration**
 
-```bash
+   ```bash
 DATABASE_URL=postgresql://user:pass@host:5432/db  # PostgreSQL connection
 DATABASE_MAX_CONNECTIONS=100               # Maximum database connections
 DATABASE_IDLE_CONNECTIONS=20               # Idle connection pool size
 DATABASE_CONNECTION_TIMEOUT=30s            # Connection timeout
-```
+   ```
 
 #### **Queue Configuration**
 
-```bash
+   ```bash
 RABBITMQ_URL=amqp://admin:pass@host:5672/  # RabbitMQ connection
 QUEUE_NAME=storage-processing               # Queue name for consumption
 EXCHANGE_NAME=tasks-exchange                # Exchange name
@@ -266,16 +266,16 @@ MAX_RETRIES=3                              # Maximum retry attempts
 
 #### **Service Discovery**
 
-```bash
+   ```bash
 AUTH_SERVICE_URL=http://auth-service:8080   # Auth service endpoint
 CACHE_SERVICE_URL=http://cache-service:8080 # Cache service endpoint
 PROFILE_SERVICE_URL=http://profile-service:8080 # Profile service endpoint
 QUEUE_SERVICE_URL=http://queue-service:8080 # Queue service endpoint
-```
+   ```
 
 #### **Feature Flags**
 
-```bash
+   ```bash
 METRICS_ENABLED=true                        # Enable Prometheus metrics
 CIRCUIT_BREAKER_ENABLED=true               # Enable circuit breakers
 AUTH_DATA_ENABLED=true                     # Enable auth data features
@@ -287,7 +287,7 @@ BATCH_PROCESSING_ENABLED=true              # Enable batch operations
 
 ### **Local Development (Kind)**
 
-```bash
+   ```bash
 # Clone and navigate to storage service
 cd services/storage-service
 
@@ -302,7 +302,7 @@ curl http://localhost:30080/health
 
 ### **Production Deployment**
 
-```bash
+   ```bash
 # Deploy using Kustomize
 kubectl apply -k deployments/kubernetes/
 
@@ -319,7 +319,7 @@ kubectl get service storage-service
 
 ### **Health Check Validation**
 
-```bash
+   ```bash
 # Basic health check
 curl http://localhost:8080/health
 
@@ -333,7 +333,7 @@ curl http://localhost:8080/health/ready
 
 ### **API Functionality Testing**
 
-```bash
+   ```bash
 # Test profile creation
 curl -X POST http://localhost:8080/api/v1/profiles \
   -H "Content-Type: application/json" \
@@ -352,7 +352,7 @@ curl -X POST http://localhost:8080/api/v1/batch \
 
 ### **Queue Processing Testing**
 
-```bash
+   ```bash
 # Test queue processing (requires RabbitMQ and queue-service)
 ./test_queue_processing.sh
 

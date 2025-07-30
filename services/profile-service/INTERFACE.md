@@ -913,7 +913,7 @@ GET  /api/v1/users/{id}               # Get user details
     "success": true,
     "message": "Task completed successfully",
     "data": {
-      // Task-specific result data
+    // Task-specific result data
     }
   },
   "completed_at": "2024-12-07T10:31:45Z",
