@@ -19,7 +19,6 @@ import (
 // AdvancedBatchOperationsService handles comprehensive batch processing with Phase 2 capabilities
 type AdvancedBatchOperationsService struct {
 	profileService     *ProfileService
-	authService        *AuthService
 	db                 *sqlx.DB
 	log                *zap.Logger
 	config             *AdvancedBatchConfig
@@ -97,7 +96,7 @@ type BatchJobContext struct {
 }
 
 // NewAdvancedBatchOperationsService creates a new advanced batch operations service
-func NewAdvancedBatchOperationsService(profileService *ProfileService, authService *AuthService, db *sqlx.DB) *AdvancedBatchOperationsService {
+func NewAdvancedBatchOperationsService(profileService *ProfileService, db *sqlx.DB) *AdvancedBatchOperationsService {
 	config := &AdvancedBatchConfig{
 		MaxBatchSize:           1000,
 		MaxConcurrency:         10,
@@ -113,7 +112,6 @@ func NewAdvancedBatchOperationsService(profileService *ProfileService, authServi
 
 	return &AdvancedBatchOperationsService{
 		profileService:     profileService,
-		authService:        authService,
 		db:                 db,
 		log:                logger.Get().Named("advanced_batch_operations"),
 		config:             config,
@@ -394,8 +392,6 @@ func (s *AdvancedBatchOperationsService) processOperationInTransaction(ctx conte
 	switch batchType {
 	case "profile":
 		err = s.processProfileOperationInTx(ctx, tx, operation, result)
-	case "auth":
-		err = s.processAuthOperationInTx(ctx, tx, operation, result)
 	default:
 		err = fmt.Errorf("unsupported batch type: %s", batchType)
 	}
@@ -443,8 +439,6 @@ func (s *AdvancedBatchOperationsService) processIndividualOperation(ctx context.
 		switch batchType {
 		case "profile":
 			err = s.processProfileOperation(ctx, operation, result)
-		case "auth":
-			err = s.processAuthOperation(ctx, operation, result)
 		default:
 			err = fmt.Errorf("unsupported batch type: %s", batchType)
 		}
@@ -673,20 +667,6 @@ func (s *AdvancedBatchOperationsService) processProfileOperationInTx(ctx context
 	return nil
 }
 
-// processAuthOperationInTx processes an auth operation within a transaction
-func (s *AdvancedBatchOperationsService) processAuthOperationInTx(ctx context.Context, tx *sqlx.Tx, operation *models.BatchOperationItem, result *models.BatchOperationResult) error {
-	// TODO: Implement auth operation processing within transaction
-	// This is a stub implementation for Phase 2.1
-	s.log.Debug("Processing auth operation in transaction",
-		logger.String("operation_id", operation.ID),
-		logger.String("operation_type", string(operation.Operation)),
-	)
-
-	// For now, just return success - full implementation would parse operation.Data
-	// and call appropriate auth service methods within the transaction context
-	return nil
-}
-
 // processProfileOperation processes a profile operation individually
 func (s *AdvancedBatchOperationsService) processProfileOperation(ctx context.Context, operation *models.BatchOperationItem, result *models.BatchOperationResult) error {
 	// TODO: Implement individual profile operation processing
@@ -698,19 +678,5 @@ func (s *AdvancedBatchOperationsService) processProfileOperation(ctx context.Con
 
 	// For now, just return success - full implementation would parse operation.Data
 	// and call appropriate profile service methods
-	return nil
-}
-
-// processAuthOperation processes an auth operation individually
-func (s *AdvancedBatchOperationsService) processAuthOperation(ctx context.Context, operation *models.BatchOperationItem, result *models.BatchOperationResult) error {
-	// TODO: Implement individual auth operation processing
-	// This is a stub implementation for Phase 2.1
-	s.log.Debug("Processing individual auth operation",
-		logger.String("operation_id", operation.ID),
-		logger.String("operation_type", string(operation.Operation)),
-	)
-
-	// For now, just return success - full implementation would parse operation.Data
-	// and call appropriate auth service methods
 	return nil
 }

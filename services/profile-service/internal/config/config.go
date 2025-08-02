@@ -238,9 +238,9 @@ func LoadConfig() *Config {
 		},
 		Environment: env,
 		Storage: StorageConfig{
-			Host:       getEnv("STORAGE_HOST", "profile-storage"),
-			Port:       getEnvAsInt("STORAGE_PORT", 8080),
-			Database:   getEnv("STORAGE_DATABASE", "profile_service"),
+			Host:       getEnv("STORAGE_SERVICE_HOST", "storage-service"),
+			Port:       getEnvAsInt("STORAGE_SERVICE_PORT", 8080),
+			Database:   getEnv("STORAGE_DATABASE", "profile_storage"),
 			Type:       getEnv("STORAGE_TYPE", "memory"),
 			MaxRetries: getEnvAsInt("STORAGE_MAX_RETRIES", 3),
 			RetryDelay: time.Duration(getEnvAsInt("STORAGE_RETRY_DELAY_MS", 100)) * time.Millisecond,

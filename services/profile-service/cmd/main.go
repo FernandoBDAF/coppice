@@ -74,7 +74,13 @@ func main() {
 	storageClient := services.NewStorageClient(cfg)
 
 	// Initialize profile service with cache integration
-	profileService := services.NewProfileService(cfg, storageClient, cacheClient, zapLogger)
+	profileService := services.NewProfileService(
+		cfg,
+		storageClient,
+		cacheClient,
+		authClient,
+		zapLogger,
+	)
 
 	// Initialize router
 	router := api.NewRouter(cfg, authClient, sessionManager, profileService)

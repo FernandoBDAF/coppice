@@ -56,7 +56,7 @@ func NewStorageClient(cfg *config.Config) *StorageClient {
 				IdleConnTimeout:     90 * time.Second,
 			},
 		},
-		baseURL: getEnvOrDefault("STORAGE_SERVICE_URL", fmt.Sprintf("http://%s:%d", cfg.Storage.Host, cfg.Storage.Port)),
+		baseURL: getEnvOrDefault("STORAGE_SERVICE_URL", fmt.Sprintf("http://%s:%d/api/v1", cfg.Storage.Host, cfg.Storage.Port)),
 		config:  &cfg.Storage,
 		auth:    &cfg.Security,
 	}

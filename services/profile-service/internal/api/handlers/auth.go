@@ -7,21 +7,13 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// SessionManagerInterface defines the interface for session management
-type SessionManagerInterface interface {
-	CreateSession(userID, password string) (string, error)
-	ValidateSession(tokenString string) (*session.Session, error)
-	InvalidateSession(tokenString string) error
-	Close() error
-}
-
 // AuthHandler handles authentication-related HTTP requests
 type AuthHandler struct {
-	sessionManager SessionManagerInterface
+	sessionManager session.SessionManagerInterface
 }
 
 // NewAuthHandler creates a new auth handler
-func NewAuthHandler(sessionManager SessionManagerInterface) *AuthHandler {
+func NewAuthHandler(sessionManager session.SessionManagerInterface) *AuthHandler {
 	return &AuthHandler{
 		sessionManager: sessionManager,
 	}
@@ -92,7 +84,7 @@ func (h *AuthHandler) ValidateToken(c *gin.Context) {
 			})
 		default:
 			c.JSON(http.StatusInternalServerError, gin.H{
-				"error": "internal server error",
+				"error": "unkown error validating token",
 			})
 		}
 		return

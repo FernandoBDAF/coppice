@@ -54,6 +54,7 @@ func NewBaseWorker(config *WorkerConfig, processor processors.MessageProcessor) 
 	rabbitPassword := os.Getenv("RABBITMQ_PASSWORD")
 	rabbitHost := os.Getenv("RABBITMQ_HOST")
 	rabbitPort := os.Getenv("RABBITMQ_PORT")
+	rabbitVhost := os.Getenv("RABBITMQ_VHOST")
 
 	// Use defaults if not provided
 	if rabbitUser == "" {
@@ -68,9 +69,12 @@ func NewBaseWorker(config *WorkerConfig, processor processors.MessageProcessor) 
 	if rabbitPort == "" {
 		rabbitPort = "5672"
 	}
+	if rabbitVhost == "" {
+		rabbitVhost = "/"
+	}
 
-	queueConfig.URL = fmt.Sprintf("amqp://%s:%s@%s:%s/",
-		rabbitUser, rabbitPassword, rabbitHost, rabbitPort)
+	queueConfig.URL = fmt.Sprintf("amqp://%s:%s@%s:%s/%s",
+		rabbitUser, rabbitPassword, rabbitHost, rabbitPort, rabbitVhost)
 
 	// Create consumer
 	consumer, err := commonQueue.NewConsumer(queueConfig)

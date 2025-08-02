@@ -92,7 +92,7 @@ spec:
               value: "5672"
             - name: RABBITMQ_VHOST
               value: "queue_vhost"
-            - name: RABBITMQ_USERNAME
+            - name: RABBITMQ_USER
               valueFrom:
                 secretKeyRef:
                   name: worker-service-secrets
@@ -335,7 +335,7 @@ spec:
               value: "5672"
             - name: RABBITMQ_VHOST
               value: "queue_vhost"
-            - name: RABBITMQ_USERNAME
+            - name: RABBITMQ_USER
               valueFrom:
                 secretKeyRef:
                   name: worker-service-secrets

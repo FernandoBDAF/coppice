@@ -26,7 +26,6 @@ type BatchOperationsTestSuite struct {
 	suite.Suite
 	connManager    *database.ConnectionManager
 	profileService *service.ProfileService
-	authService    *service.AuthService
 	batchService   *service.AdvancedBatchOperationsService
 	logger         *zap.Logger
 	testProfileIDs []uuid.UUID
@@ -65,13 +64,10 @@ func (suite *BatchOperationsTestSuite) SetupSuite() error {
 
 	// Setup services
 	profileRepo := repository.NewProfileRepository(suite.connManager.GetDB())
-	authRepo := repository.NewAuthRepository(suite.connManager.GetDB())
 
 	suite.profileService = service.NewProfileService(profileRepo)
-	suite.authService = service.NewAuthService(authRepo)
 	suite.batchService = service.NewAdvancedBatchOperationsService(
 		suite.profileService,
-		suite.authService,
 		suite.connManager.GetDB(),
 	)
 

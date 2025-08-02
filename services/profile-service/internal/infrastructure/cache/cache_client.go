@@ -47,9 +47,9 @@ type CacheRequest struct {
 
 // CacheResponse represents a cache operation response
 type CacheResponse struct {
-	Success bool   `json:"success"`
-	Data    string `json:"data,omitempty"`
-	Error   string `json:"error,omitempty"`
+	Status string `json:"status"`
+	Data   string `json:"data,omitempty"`
+	Error  string `json:"error,omitempty"`
 }
 
 // CircuitBreakerInterface defines circuit breaker operations
@@ -233,8 +233,8 @@ func (c *CacheClient) Get(ctx context.Context, key string) ([]byte, error) {
 			return fmt.Errorf("failed to decode response: %w", err)
 		}
 
-		if !response.Success {
-			return fmt.Errorf("cache operation failed: %s", response.Error)
+		if response.Status != "success" {
+			return fmt.Errorf("cache operation failed: %s", response.Status)
 		}
 
 		result = []byte(response.Data)
@@ -278,7 +278,7 @@ func (c *CacheClient) Set(ctx context.Context, key string, value []byte, ttl tim
 			return fmt.Errorf("failed to marshal request: %w", err)
 		}
 
-		req, err := http.NewRequestWithContext(ctx, "PUT", url, bytes.NewBuffer(jsonData))
+		req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
 		if err != nil {
 			return fmt.Errorf("failed to create request: %w", err)
 		}
@@ -305,8 +305,8 @@ func (c *CacheClient) Set(ctx context.Context, key string, value []byte, ttl tim
 			return fmt.Errorf("failed to decode response: %w", err)
 		}
 
-		if !response.Success {
-			return fmt.Errorf("cache operation failed: %s", response.Error)
+		if response.Status != "success" {
+			return fmt.Errorf("cache operation failed: %s", response.Status)
 		}
 
 		c.logger.Debug("Cache SET successful", zap.String("key", key), zap.Duration("ttl", ttl))

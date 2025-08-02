@@ -7,6 +7,7 @@ import (
 	"github.com/fernandobarroso/microservices/services/profile-service/internal/api/middleware"
 	"github.com/fernandobarroso/microservices/services/profile-service/internal/config"
 	"github.com/fernandobarroso/microservices/services/profile-service/internal/domain/services"
+	"github.com/fernandobarroso/microservices/services/profile-service/internal/infrastructure/session"
 	"github.com/gin-gonic/gin"
 )
 
@@ -15,12 +16,12 @@ type Router struct {
 	engine         *gin.Engine
 	cfg            *config.Config
 	authClient     *services.AuthServiceClient
-	sessionManager handlers.SessionManagerInterface
+	sessionManager session.SessionManagerInterface
 	profileService *services.ProfileService
 }
 
 // NewRouter creates a new API router
-func NewRouter(cfg *config.Config, authClient *services.AuthServiceClient, sessionManager handlers.SessionManagerInterface, profileService *services.ProfileService) *Router {
+func NewRouter(cfg *config.Config, authClient *services.AuthServiceClient, sessionManager session.SessionManagerInterface, profileService *services.ProfileService) *Router {
 	router := &Router{
 		engine:         gin.Default(),
 		cfg:            cfg,
@@ -58,6 +59,20 @@ func (r *Router) setupRoutes() {
 			authHandler := handlers.NewAuthHandler(r.sessionManager)
 			auth.POST("/token", authHandler.Authenticate)
 			auth.POST("/validate", authHandler.ValidateToken)
+		}
+
+		// NEW: User management endpoints
+		users := v1.Group("/users")
+		{
+			userHandler := handlers.NewUserHandler(r.profileService)
+
+			// Apply authorization middleware for user management
+			users.Use(middleware.RoleMiddleware("admin")) // Only admins can manage users
+
+			users.POST("", userHandler.CreateUser)
+			users.GET("/email/:email", userHandler.GetUserByEmail)
+			users.PUT("/:id", userHandler.UpdateUser)
+			users.DELETE("/:id", userHandler.DeleteUser)
 		}
 
 		// Profile endpoints

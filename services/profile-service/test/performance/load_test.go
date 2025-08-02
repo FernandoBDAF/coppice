@@ -259,7 +259,7 @@ func setupPerformanceTestEnvironment(t *testing.T) (*gin.Engine, *MockPerformanc
 
 	// Create services
 	storageClient := &services.StorageClient{}
-	profileService := services.NewProfileService(cfg, storageClient, nil, nil)
+	profileService := services.NewProfileService(cfg, storageClient, nil, nil, logger.Logger)
 	taskHandler := handlers.NewTaskHandler(profileService)
 
 	// Setup optimized Gin router
@@ -317,7 +317,7 @@ func setupBenchmarkEnvironment() (*gin.Engine, *MockPerformanceQueueService) {
 
 	// Create services
 	storageClient := &services.StorageClient{}
-	profileService := services.NewProfileService(cfg, storageClient, nil, nil)
+	profileService := services.NewProfileService(cfg, storageClient, nil, nil, logger.Logger)
 	taskHandler := handlers.NewTaskHandler(profileService)
 
 	// Setup optimized Gin router
@@ -843,4 +843,3 @@ func BenchmarkMessageSerialization(b *testing.B) {
 		}
 	}
 }
- 

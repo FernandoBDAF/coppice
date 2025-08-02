@@ -111,17 +111,39 @@ spec:
 
           # 🔧 ENVIRONMENT VARIABLES
           env:
+            # 🗄️ Database Configuration
+            - name: DATABASE_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: auth-service-config
+                  key: DATABASE_HOST
+            - name: DATABASE_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: auth-service-config
+                  key: DATABASE_PORT
+            - name: DATABASE_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: auth-service-config
+                  key: DATABASE_NAME
+            - name: DATABASE_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: auth-service-config
+                  key: DATABASE_USER
+            - name: DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: auth-postgres-secret
+                  key: password
+
             # 🌐 Service Integration Configuration
             - name: STORAGE_SERVICE_URL
               valueFrom:
                 configMapKeyRef:
                   name: auth-service-config
                   key: STORAGE_SERVICE_URL
-            - name: CACHE_SERVICE_URL
-              valueFrom:
-                configMapKeyRef:
-                  name: auth-service-config
-                  key: CACHE_SERVICE_URL
             - name: SERVICE_TIMEOUT
               valueFrom:
                 configMapKeyRef:
@@ -249,11 +271,6 @@ spec:
                 secretKeyRef:
                   name: auth-service-secrets
                   key: STORAGE_SERVICE_API_KEY
-            - name: CACHE_SERVICE_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: auth-service-secrets
-                  key: CACHE_SERVICE_API_KEY
 
             # 🔐 Service Authentication
             - name: SERVICE_API_KEY

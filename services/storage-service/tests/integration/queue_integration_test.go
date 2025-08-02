@@ -89,13 +89,10 @@ func (suite *IntegrationTestSuite) SetupSuite() error {
 
 	// Setup services
 	profileRepo := repository.NewProfileRepository(suite.dbManager.GetDB())
-	authRepo := repository.NewAuthRepository(suite.dbManager.GetDB())
 
 	suite.profileService = service.NewProfileService(profileRepo)
-	authService := service.NewAuthService(authRepo)
 	suite.batchService = service.NewAdvancedBatchOperationsService(
 		suite.profileService,
-		authService,
 		suite.dbManager.GetDB(),
 	)
 

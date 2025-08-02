@@ -29,36 +29,28 @@ type BenchmarkSuite struct {
 }
 
 func setupBenchmark() *BenchmarkSuite {
-	// Initialize logger
-	logger := zap.NewNop()
-
-	// Create mock database connection (in real benchmarks, this would be a test database)
-	db := &sqlx.DB{} // Mock for now
+	// Use mock/in-memory database for benchmarks
+	db := &sqlx.DB{} // Mock database
 
 	// Create repositories
 	profileRepo := repository.NewProfileRepository(nil) // Mock repository
-	authRepo := repository.NewAuthRepository(nil)       // Mock repository
 
 	// Create services
 	profileService := service.NewProfileService(profileRepo)
-	authService := service.NewAuthService(authRepo)
-	batchService := service.NewAdvancedBatchOperationsService(profileService, authService, db)
+	batchService := service.NewAdvancedBatchOperationsService(profileService, db)
 
 	// Setup messaging components
 	messageProcessor := messaging.NewMessageProcessor()
 	storageHandler := messaging.NewStorageHandler(profileService, batchService)
 	messageProcessor.RegisterHandler(storageHandler)
 
-	// Generate test data
-	testData := generateTestData(1000)
-
 	return &BenchmarkSuite{
 		profileService:   profileService,
 		batchService:     batchService,
 		messageProcessor: messageProcessor,
 		storageHandler:   storageHandler,
-		logger:           logger,
-		testData:         testData,
+		logger:           zap.NewNop(),
+		testData:         generateTestData(100),
 	}
 }
 

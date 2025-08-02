@@ -49,7 +49,7 @@ class TokenService {
   async verifyToken(token) {
     return jwt.verify(
       token,
-      config.jwt.publicKeySecret || config.jwt.privateKeySecret,
+      config.jwt.privateKeySecret,
       {
         algorithms: ["HS256"],
       }
@@ -59,7 +59,7 @@ class TokenService {
   async verifyRefreshToken(refreshToken) {
     const decoded = jwt.verify(
       refreshToken,
-      config.jwt.publicKeySecret || config.jwt.privateKeySecret,
+      config.jwt.privateKeySecret,
       {
         algorithms: ["HS256"],
       }

@@ -43,7 +43,6 @@ func (h *BatchMessageHandler) GetSupportedRoutingKeys() []string {
 	return []string{
 		"batch.process",
 		"batch.profile.process",
-		"batch.auth.process",
 		"batch.status",
 		"batch.operation.create",
 		"batch.operation.update",
@@ -68,8 +67,6 @@ func (h *BatchMessageHandler) Handle(ctx context.Context, msg *Message) (*Messag
 		response, err = h.handleBatchProcess(ctx, msg, startTime)
 	case "batch.profile.process":
 		response, err = h.handleProfileBatchProcess(ctx, msg, startTime)
-	case "batch.auth.process":
-		response, err = h.handleAuthBatchProcess(ctx, msg, startTime)
 	case "batch.status":
 		response, err = h.handleBatchStatus(ctx, msg, startTime)
 	case "batch.cancel":
@@ -173,48 +170,6 @@ func (h *BatchMessageHandler) handleProfileBatchProcess(ctx context.Context, msg
 		Result: map[string]interface{}{
 			"batch_result":     result,
 			"batch_type":       "profile",
-			"batch_id":         result.ID,
-			"status":           result.Status,
-			"successful_ops":   result.SuccessfulOps,
-			"failed_ops":       result.FailedOps,
-			"processing_stats": result.ProcessingStats,
-		},
-		ProcessedAt:    time.Now(),
-		ProcessingTime: time.Since(startTime),
-	}, nil
-}
-
-// handleAuthBatchProcess processes batch.auth.process messages
-func (h *BatchMessageHandler) handleAuthBatchProcess(ctx context.Context, msg *Message, startTime time.Time) (*MessageResponse, error) {
-	h.log.Debug("Processing auth batch process message",
-		logger.String("message_id", msg.ID),
-	)
-
-	var req models.BatchRequest
-	if err := json.Unmarshal(msg.Payload, &req); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal auth batch request: %w", err)
-	}
-
-	// Set batch type to auth
-	req.Type = "auth"
-
-	// Set default options if not provided
-	if req.Options.Mode == "" {
-		req.Options = models.DefaultBatchOptions()
-	}
-
-	// Process batch
-	result, err := h.batchService.ProcessBatch(ctx, &req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to process auth batch: %w", err)
-	}
-
-	return &MessageResponse{
-		MessageID: fmt.Sprintf("resp_%s", msg.ID),
-		Success:   true,
-		Result: map[string]interface{}{
-			"batch_result":     result,
-			"batch_type":       "auth",
 			"batch_id":         result.ID,
 			"status":           result.Status,
 			"successful_ops":   result.SuccessfulOps,

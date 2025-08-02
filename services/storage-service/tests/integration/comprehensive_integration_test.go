@@ -33,12 +33,10 @@ type ComprehensiveIntegrationTestSuite struct {
 
 	// Services
 	profileService *service.ProfileService
-	authService    *service.AuthService
 	batchService   *service.AdvancedBatchOperationsService
 
 	// Handlers
 	profileHandler *rest.ProfileHandler
-	authHandler    *rest.AuthHandler
 	batchHandler   *rest.BatchHandler
 
 	// REST server
@@ -46,7 +44,6 @@ type ComprehensiveIntegrationTestSuite struct {
 	testServer *httptest.Server
 
 	// Messaging (when enabled)
-	authMessageHandler  *messaging.AuthHandler
 	batchMessageHandler *messaging.BatchMessageHandler
 
 	// Performance optimization
@@ -54,22 +51,18 @@ type ComprehensiveIntegrationTestSuite struct {
 
 	// Test data tracking
 	createdProfiles []string
-	createdUsers    []string
 	createdBatches  []string
 }
 
-// SetupSuite initializes the comprehensive test environment
 func (suite *ComprehensiveIntegrationTestSuite) SetupSuite() {
-	// Load test configuration
+	// Initialize configuration for tests
 	cfg := &config.Config{
-		DBHost:         "localhost",
-		DBPort:         "5432",
-		DBName:         "storage_test",
-		DBUser:         "test",
-		DBPassword:     "test",
-		ServerPort:     "8080",
-		LogLevel:       "debug",
-		LogEnvironment: "test",
+		DBHost:     "localhost",
+		DBPort:     "5432",
+		DBName:     "storage_integration_test",
+		DBUser:     "test",
+		DBPassword: "test",
+		ServerPort: "8080",
 	}
 
 	// Initialize database connection
@@ -78,53 +71,34 @@ func (suite *ComprehensiveIntegrationTestSuite) SetupSuite() {
 	defer cancel()
 
 	err := suite.connManager.Connect(ctx)
-	require.NoError(suite.T(), err, "Failed to connect to test database")
+	suite.Require().NoError(err, "Failed to connect to test database")
 
 	suite.testDB = suite.connManager.GetDB().DB
 
 	// Create repositories
 	profileRepo := repository.NewProfileRepository(suite.connManager.GetDB())
-	authRepo := repository.NewAuthRepository(suite.connManager.GetDB())
 
 	// Create services
 	suite.profileService = service.NewProfileService(profileRepo)
-	suite.authService = service.NewAuthService(authRepo)
 	suite.batchService = service.NewAdvancedBatchOperationsService(
 		suite.profileService,
-		suite.authService,
 		suite.connManager.GetDB(),
 	)
 
 	// Create handlers
 	suite.profileHandler = rest.NewProfileHandler(suite.profileService)
-	suite.authHandler = rest.NewAuthHandler(suite.authService)
 	suite.batchHandler = rest.NewBatchHandler(suite.batchService)
 
 	// Create messaging handlers
-	suite.authMessageHandler = messaging.NewAuthHandler(suite.authService)
 	suite.batchMessageHandler = messaging.NewBatchMessageHandler(suite.batchService)
 
 	// Create performance optimization manager
 	suite.optimizationManager = performance.NewOptimizationManager(suite.connManager.GetDB())
 	err = suite.optimizationManager.Start(context.Background())
-	require.NoError(suite.T(), err, "Failed to start optimization manager")
+	suite.Require().NoError(err, "Failed to start optimization manager")
 
-	// Create and configure REST server
-	suite.restServer = rest.NewServer(cfg)
-	suite.restServer.RegisterRoutes(
-		suite.profileHandler,
-		suite.authHandler,
-		suite.batchHandler,
-	)
-
-	// Create test HTTP server using the underlying HTTP handler
-	// Note: We'll skip the actual HTTP server for now and test the handlers directly
-	// since the REST server doesn't expose its mux directly
-	suite.testServer = nil // Will test handlers directly
-
-	// Initialize tracking slices
+	// Initialize test data tracking
 	suite.createdProfiles = make([]string, 0)
-	suite.createdUsers = make([]string, 0)
 	suite.createdBatches = make([]string, 0)
 }
 
@@ -144,60 +118,6 @@ func (suite *ComprehensiveIntegrationTestSuite) TearDownSuite() {
 	}
 }
 
-// TestCompleteAuthIntegration validates the complete auth service integration
-func (suite *ComprehensiveIntegrationTestSuite) TestCompleteAuthIntegration() {
-	suite.T().Log("Testing complete auth service integration")
-
-	// Test 1: Create a user via service layer (direct testing)
-	createUserReq := &models.AuthUserRequest{
-		Email:     "integration-test@example.com",
-		Password:  "TestPassword123!",
-		FirstName: "Integration",
-		LastName:  "Test",
-		Role:      "user",
-	}
-
-	user, err := suite.authService.CreateUser(context.Background(), createUserReq)
-	require.NoError(suite.T(), err)
-	require.NotNil(suite.T(), user)
-	suite.createdUsers = append(suite.createdUsers, user.ID)
-
-	// Test 2: Authenticate the user
-	authUser, err := suite.authService.AuthenticateUser(
-		context.Background(),
-		"integration-test@example.com",
-		"TestPassword123!",
-		"127.0.0.1",
-		"integration-test",
-	)
-	require.NoError(suite.T(), err)
-	require.NotNil(suite.T(), authUser)
-	assert.Equal(suite.T(), user.ID, authUser.ID)
-
-	// Test 3: List users
-	users, err := suite.authService.ListUsers(context.Background(), 1, 10)
-	require.NoError(suite.T(), err)
-	assert.NotEmpty(suite.T(), users)
-
-	// Test 4: Test auth message handler (simulated queue message)
-	userJSON, err := json.Marshal(createUserReq)
-	require.NoError(suite.T(), err)
-
-	testMessage := &messaging.Message{
-		ID:         "test-auth-msg-1",
-		Type:       "auth.user.create",
-		RoutingKey: "auth.user.create",
-		Payload:    userJSON,
-		Timestamp:  time.Now(),
-	}
-
-	msgResp, err := suite.authMessageHandler.Handle(context.Background(), testMessage)
-	require.NoError(suite.T(), err)
-	assert.True(suite.T(), msgResp.Success)
-
-	suite.T().Log("✅ Complete auth integration test passed")
-}
-
 // TestComprehensiveBatchOperations validates batch operations across all modes
 func (suite *ComprehensiveIntegrationTestSuite) TestComprehensiveBatchOperations() {
 	suite.T().Log("Testing comprehensive batch operations")
@@ -211,41 +131,27 @@ func (suite *ComprehensiveIntegrationTestSuite) TestComprehensiveBatchOperations
 	assert.Equal(suite.T(), models.BatchStatusCompleted, result.Status)
 	suite.createdBatches = append(suite.createdBatches, result.ID)
 
-	// Test 2: Auth batch operations (Transactional mode)
-	authBatchReq := suite.createAuthBatchRequest(models.BatchModeTransactional, 3)
-
-	authResult, err := suite.batchService.ProcessBatch(context.Background(), authBatchReq)
-	require.NoError(suite.T(), err)
-	require.NotNil(suite.T(), authResult)
-
-	// Test 3: Parallel batch processing
+	// Test 2: Parallel batch processing
 	parallelBatchReq := suite.createProfileBatchRequest(models.BatchModeParallel, 10)
 	parallelBatchReq.Options.MaxConcurrency = 3
 
 	parallelResult, err := suite.batchService.ProcessBatch(context.Background(), parallelBatchReq)
 	require.NoError(suite.T(), err)
 	require.NotNil(suite.T(), parallelResult)
+	assert.Equal(suite.T(), models.BatchStatusCompleted, parallelResult.Status)
 
-	// Test 4: Batch validation via batch request validation
-	validationReq := suite.createProfileBatchRequest(models.BatchModeTransactional, 2)
-	validationErr := validationReq.Validate()
-	assert.NoError(suite.T(), validationErr)
-
-	// Test 5: Batch message handler (simulated queue message)
-	batchJSON, err := json.Marshal(profileBatchReq)
-	require.NoError(suite.T(), err)
-
-	testBatchMessage := &messaging.Message{
-		ID:         "test-batch-msg-1",
-		Type:       "batch.process",
-		RoutingKey: "batch.process",
-		Payload:    batchJSON,
+	// Test 3: Message-based batch processing
+	batchMessage := &messaging.Message{
+		ID:         "test-batch-msg-001",
+		Type:       "batch.profile.process",
+		RoutingKey: "batch.profile.process",
+		Payload:    mustMarshal(profileBatchReq),
 		Timestamp:  time.Now(),
 	}
 
-	batchMsgResp, err := suite.batchMessageHandler.Handle(context.Background(), testBatchMessage)
+	msgResponse, err := suite.batchMessageHandler.Handle(context.Background(), batchMessage)
 	require.NoError(suite.T(), err)
-	assert.True(suite.T(), batchMsgResp.Success)
+	assert.True(suite.T(), msgResponse.Success)
 
 	suite.T().Log("✅ Comprehensive batch operations test passed")
 }
@@ -285,19 +191,7 @@ func (suite *ComprehensiveIntegrationTestSuite) TestPerformanceOptimization() {
 func (suite *ComprehensiveIntegrationTestSuite) TestErrorScenariosAndRecovery() {
 	suite.T().Log("Testing error scenarios and recovery")
 
-	// Test 1: Invalid auth user creation
-	invalidUserReq := &models.AuthUserRequest{
-		Email:     "invalid-email", // Invalid email format
-		Password:  "123",           // Too short password
-		FirstName: "",              // Empty first name
-		LastName:  "Test",
-		Role:      "invalid_role", // Invalid role
-	}
-
-	_, err := suite.authService.CreateUser(context.Background(), invalidUserReq)
-	assert.Error(suite.T(), err)
-
-	// Test 2: Batch with invalid operations
+	// Test 1: Batch with invalid operations
 	invalidBatch := &models.BatchRequest{
 		Type: "profile",
 		Operations: []models.BatchOperationItem{
@@ -313,11 +207,11 @@ func (suite *ComprehensiveIntegrationTestSuite) TestErrorScenariosAndRecovery() 
 	validationErr := invalidBatch.Validate()
 	assert.Error(suite.T(), validationErr)
 
-	// Test 3: Non-existent batch status query
+	// Test 2: Non-existent batch status query
 	_, exists := suite.batchService.GetBatchStatus("non-existent-batch-id")
 	assert.False(suite.T(), exists)
 
-	// Test 4: Invalid message routing key
+	// Test 3: Invalid message routing key
 	invalidMessage := &messaging.Message{
 		ID:         "invalid-msg-1",
 		Type:       "invalid.type",
@@ -326,7 +220,7 @@ func (suite *ComprehensiveIntegrationTestSuite) TestErrorScenariosAndRecovery() 
 		Timestamp:  time.Now(),
 	}
 
-	invalidMsgResp, err := suite.authMessageHandler.Handle(context.Background(), invalidMessage)
+	invalidMsgResp, err := suite.batchMessageHandler.Handle(context.Background(), invalidMessage)
 	require.NoError(suite.T(), err)
 	assert.False(suite.T(), invalidMsgResp.Success)
 	assert.NotEmpty(suite.T(), invalidMsgResp.Error)
@@ -424,45 +318,6 @@ func (suite *ComprehensiveIntegrationTestSuite) createProfileBatchRequest(mode m
 	}
 }
 
-// createAuthBatchRequest creates a test auth batch request
-func (suite *ComprehensiveIntegrationTestSuite) createAuthBatchRequest(mode models.BatchProcessingMode, numOps int) *models.BatchRequest {
-	operations := make([]models.BatchOperationItem, numOps)
-
-	for i := 0; i < numOps; i++ {
-		userData := map[string]interface{}{
-			"email":      fmt.Sprintf("batch-auth-test-%d@example.com", i),
-			"password":   "TestPassword123!",
-			"first_name": fmt.Sprintf("AuthBatch%d", i),
-			"last_name":  "User",
-			"role":       "user",
-		}
-
-		dataJSON, _ := json.Marshal(userData)
-
-		operations[i] = models.BatchOperationItem{
-			ID:         fmt.Sprintf("auth-op-%d", i),
-			Operation:  models.BatchOperationCreate,
-			Data:       dataJSON,
-			ExternalID: fmt.Sprintf("ext-auth-%d", i),
-		}
-	}
-
-	return &models.BatchRequest{
-		Type:       "auth",
-		Operations: operations,
-		Options: models.BatchOptions{
-			Mode:                mode,
-			FailureHandling:     models.BatchContinueOnFail,
-			MaxConcurrency:      3,
-			TimeoutPerOperation: 30 * time.Second,
-			TotalTimeout:        5 * time.Minute,
-			ValidationLevel:     models.BatchValidationBasic,
-			EnableRollback:      true,
-			EnableProgressTrack: true,
-		},
-	}
-}
-
 // cleanupTestData removes all test data created during tests
 func (suite *ComprehensiveIntegrationTestSuite) cleanupTestData() {
 	suite.T().Log("Cleaning up test data")
@@ -472,17 +327,19 @@ func (suite *ComprehensiveIntegrationTestSuite) cleanupTestData() {
 		_, _ = suite.testDB.Exec("DELETE FROM profiles WHERE id = $1", profileID)
 	}
 
-	// Clean up users
-	for _, userID := range suite.createdUsers {
-		_, _ = suite.testDB.Exec("DELETE FROM auth_users WHERE id = $1", userID)
-	}
-
 	// Clean up any batch-related test data
 	_, _ = suite.testDB.Exec("DELETE FROM profiles WHERE email LIKE 'batch-test-%@example.com'")
-	_, _ = suite.testDB.Exec("DELETE FROM auth_users WHERE email LIKE 'batch-auth-test-%@example.com'")
-	_, _ = suite.testDB.Exec("DELETE FROM auth_users WHERE email = 'integration-test@example.com'")
 
 	suite.T().Log("Test data cleanup completed")
+}
+
+// mustMarshal is a helper function for marshaling test data
+func mustMarshal(v interface{}) []byte {
+	data, err := json.Marshal(v)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to marshal test data: %v", err))
+	}
+	return data
 }
 
 // TestComprehensiveIntegrationTestSuite runs the comprehensive integration test suite

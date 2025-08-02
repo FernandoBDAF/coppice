@@ -1,14 +1,9 @@
-import StorageServiceClient from "../clients/storageServiceClient.js";
-import CacheServiceClient from "../clients/cacheServiceClient.js";
-import passwordService from "./passwordService.js";
+import userRepository from "../repository/UserRepository.js";
 import tokenService from "./tokenService.js";
-import config from "../config/config.js";
 
 class AuthenticationService {
   constructor() {
-    this.storageClient = new StorageServiceClient(config);
-    this.cacheClient = new CacheServiceClient(config);
-    this.passwordService = passwordService;
+    this.userRepository = userRepository;
     this.tokenService = tokenService;
   }
 
@@ -18,8 +13,8 @@ class AuthenticationService {
     try {
       console.log(`Authentication attempt for user: ${email}`);
 
-      // 1. Get user data via storage-service
-      const user = await this.storageClient.getUserByEmail(email);
+      // 1. Get user from database
+      const user = await this.userRepository.getUserByEmail(email);
 
       if (!user) {
         await this._recordFailedAttempt(null, email, req, "USER_NOT_FOUND");
@@ -33,7 +28,7 @@ class AuthenticationService {
       }
 
       // 3. Check if account is active
-      if (!user.is_active) {
+      if (!user.isActive) {
         await this._recordFailedAttempt(
           user.id,
           email,
@@ -43,11 +38,10 @@ class AuthenticationService {
         throw new Error("Account is inactive");
       }
 
-      // 4. Validate password locally (Argon2)
-      const isValid = await this.passwordService.validatePassword(
-        password,
-        user.hashed_password,
-        user.salt
+      // 4. Validate password
+      const isValid = await this.userRepository.validatePassword(
+        user,
+        password
       );
 
       if (!isValid) {
@@ -63,31 +57,8 @@ class AuthenticationService {
       // 5. Generate JWT tokens
       const tokens = await this.tokenService.generateTokens(user);
 
-      // 6. Store session in cache (non-blocking)
-      const sessionData = {
-        userId: user.id,
-        email: user.email,
-        role: user.role,
-        firstName: user.first_name,
-        lastName: user.last_name,
-        loginTime: new Date().toISOString(),
-      };
-
-      this.cacheClient.storeSession(tokens.jti, sessionData, 3600);
-
-      // 7. Record successful login via storage-service (non-blocking)
-      this.storageClient.recordLoginAttempt(user.id, req.ip, true);
-      this.storageClient.logAuditEvent({
-        user_id: user.id,
-        action: "LOGIN_SUCCESS",
-        ip_address: req.ip,
-        user_agent: req.get("User-Agent"),
-        success: true,
-        details: JSON.stringify({
-          loginTime: new Date().toISOString(),
-          tokenId: tokens.jti,
-        }),
-      });
+      // 6. Record successful login
+      await this.userRepository.recordLoginAttempt(user.id, true);
 
       // Record metrics
       const duration = Date.now() - startTime;
@@ -101,13 +72,7 @@ class AuthenticationService {
           refresh_token: tokens.refreshToken,
           token_type: "bearer",
           expires_in: 3600,
-          user: {
-            id: user.id,
-            email: user.email,
-            firstName: user.first_name,
-            lastName: user.last_name,
-            role: user.role,
-          },
+          user: user.toSafeJSON(),
         },
       };
     } catch (error) {
@@ -122,30 +87,22 @@ class AuthenticationService {
 
   async validateToken(token) {
     try {
-      // 1. Verify JWT token locally
+      // Verify JWT token
       const decoded = await this.tokenService.verifyToken(token);
 
-      // 2. Check if token is blacklisted (non-blocking)
-      const isBlacklisted = await this.cacheClient.isTokenBlacklisted(
-        decoded.jti
-      );
-      if (isBlacklisted) {
-        throw new Error("Token has been revoked");
-      }
+      // Get user data
+      const user = await this.userRepository.getUserById(decoded.userId);
 
-      // 3. Get session data from cache (optional)
-      const sessionData = await this.cacheClient.getSession(decoded.jti);
+      if (!user || !user.isActive) {
+        return {
+          valid: false,
+          error: "User not found or inactive",
+        };
+      }
 
       return {
         valid: true,
-        user: {
-          id: decoded.userId,
-          email: decoded.email,
-          role: decoded.role,
-          firstName: decoded.firstName,
-          lastName: decoded.lastName,
-        },
-        session: sessionData,
+        user: user.toSafeJSON(),
       };
     } catch (error) {
       console.error("Token validation failed:", error.message);
@@ -161,28 +118,15 @@ class AuthenticationService {
       // 1. Verify refresh token
       const decoded = await this.tokenService.verifyRefreshToken(refreshToken);
 
-      // 2. Get user data via storage-service
-      const user = await this.storageClient.getUserById(decoded.userId);
+      // 2. Get user data
+      const user = await this.userRepository.getUserById(decoded.userId);
 
-      if (!user || !user.is_active) {
+      if (!user || !user.isActive) {
         throw new Error("User not found or inactive");
       }
 
       // 3. Generate new tokens
       const tokens = await this.tokenService.generateTokens(user);
-
-      // 4. Blacklist old token
-      await this.cacheClient.blacklistToken(decoded.jti, 3600);
-
-      // 5. Store new session
-      const sessionData = {
-        userId: user.id,
-        email: user.email,
-        role: user.role,
-        refreshTime: new Date().toISOString(),
-      };
-
-      this.cacheClient.storeSession(tokens.jti, sessionData, 3600);
 
       return {
         status: "success",
@@ -204,23 +148,8 @@ class AuthenticationService {
     try {
       const decoded = await this.tokenService.verifyToken(token);
 
-      // Blacklist token
-      await this.cacheClient.blacklistToken(decoded.jti, 3600);
-
-      // Invalidate session
-      await this.cacheClient.invalidateSession(decoded.jti);
-
-      // Log audit event
-      this.storageClient.logAuditEvent({
-        user_id: decoded.userId,
-        action: "LOGOUT",
-        ip_address: "unknown", // Will need to be passed from request
-        success: true,
-        details: JSON.stringify({
-          logoutTime: new Date().toISOString(),
-          tokenId: decoded.jti,
-        }),
-      });
+      // Record logout in user's login history
+      await this.userRepository.recordLoginAttempt(decoded.userId, true);
 
       return {
         status: "success",
@@ -234,25 +163,18 @@ class AuthenticationService {
 
   // Private method for recording failed attempts
   async _recordFailedAttempt(userId, email, req, reason) {
-    const auditData = {
-      user_id: userId,
-      action: "LOGIN_FAILED",
-      ip_address: req.ip,
-      user_agent: req.get("User-Agent"),
-      success: false,
-      details: JSON.stringify({
-        email: email,
-        reason: reason,
-        timestamp: new Date().toISOString(),
-      }),
-    };
-
-    // Record via storage-service (non-blocking)
-    this.storageClient.logAuditEvent(auditData);
-
     if (userId) {
-      this.storageClient.recordLoginAttempt(userId, req.ip, false);
+      await this.userRepository.recordLoginAttempt(userId, false);
     }
+
+    console.error("Authentication failed:", {
+      userId,
+      email,
+      reason,
+      ip: req.ip,
+      userAgent: req.get("User-Agent"),
+      timestamp: new Date().toISOString(),
+    });
   }
 }
 

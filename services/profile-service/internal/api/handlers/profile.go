@@ -13,6 +13,10 @@ type ProfileHandler struct {
 	profileService services.ProfileServiceInterface
 }
 
+type ProfileError struct {
+	Error string `json:"error"`
+}
+
 // NewProfileHandler creates a new profile handler
 func NewProfileHandler(profileService *services.ProfileService) *ProfileHandler {
 	return &ProfileHandler{

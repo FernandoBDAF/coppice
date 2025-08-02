@@ -638,12 +638,12 @@ class TokenService {
 
   getPrivateKey() {
     // In production, this would come from Kubernetes secrets
-    return process.env.JWT_PRIVATE_KEY_SECRET || "auth-service-jwt-private-key";
+    return process.env.JWT_PRIVATE_KEY_SECRET || "jwt-signing-key-dev";
   }
 
   getPublicKey() {
     // In production, this would come from Kubernetes secrets
-    return process.env.JWT_PUBLIC_KEY_SECRET || "auth-service-jwt-public-key";
+    return process.env.JWT_PUBLIC_KEY_SECRET || "jwt-verification-key-dev";
   }
 }
 

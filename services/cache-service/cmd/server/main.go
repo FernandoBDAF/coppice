@@ -238,6 +238,10 @@ func LoggingMiddleware(logger *zap.Logger) gin.HandlerFunc {
 			path = path + "?" + raw
 		}
 
+		if path == "/ready" || path == "/health" {
+			return
+		}
+
 		logger.Info("HTTP request",
 			zap.String("method", method),
 			zap.String("path", path),
@@ -349,7 +353,7 @@ func GetCacheHandler(cacheService *services.CacheService) gin.HandlerFunc {
 			return
 		}
 
-		c.Data(http.StatusOK, "application/octet-stream", value)
+		c.JSON(http.StatusOK, gin.H{"data": string(value), "status": "success"})
 	}
 }
 

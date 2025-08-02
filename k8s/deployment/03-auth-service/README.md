@@ -1,37 +1,39 @@
 # Auth Service – Kubernetes Deployment
 
-**Service**: JWT-based authentication and authorization service  
+**Service**: JWT-based authentication and authorization service with dedicated database  
 **Port**: NodePort 30083 (HTTP)  
-**Dependencies**: Storage Service for user data  
-**Technology**: Node.js with JWT tokens and bcrypt
+**Dependencies**: Own PostgreSQL database (auth-postgres)  
+**Technology**: Node.js with JWT tokens, bcrypt, and PostgreSQL
 
 ---
 
 ## 🧱 Components
 
-| Resource       | Description                               |
-| -------------- | ----------------------------------------- |
-| **Deployment** | Auth service app running on port 8080     |
-| **Service**    | NodePort 30083 for external access        |
-| **ConfigMap**  | JWT configuration and service settings    |
-| **Secret**     | JWT secrets, API keys, and service tokens |
+| Resource             | Description                                       |
+| -------------------- | ------------------------------------------------- |
+| **StatefulSet**      | PostgreSQL database for user data (auth-postgres) |
+| **Database Service** | ClusterIP service for PostgreSQL access           |
+| **Database Secret**  | PostgreSQL credentials                            |
+| **Deployment**       | Auth service app running on port 8080             |
+| **Service**          | NodePort 30083 for external access                |
+| **ConfigMap**        | Database connection and JWT configuration         |
+| **Secret**           | JWT secrets, API keys, and service tokens         |
 
 ## 🔁 Dependencies
 
-- **Storage Service**: Required for user data and profile management
-- **PostgreSQL**: Indirect dependency via Storage Service
-- **Network connectivity**: Must reach `storage-service:8080`
+- **PostgreSQL Database**: Dedicated auth-postgres StatefulSet for user data
+- **Network connectivity**: Must reach `auth-postgres-service:5432`
+- **Storage Service**: Optional integration for profile data during migration
 
 ## 🚀 Deployment
 
 ### Quick Deploy
 
 ```bash
-# Deploy all components
-kubectl apply -f .
-
-# Wait for readiness
-kubectl wait --for=condition=Available deployment/auth-service --timeout=300s
+# Deploy all components (including database)
+kubectl apply -f auth-postgres-secret.yaml
+kubectl apply -f auth-postgres-statefulset.yaml
+kubectl wait --for=condition=Ready pod/auth-postgres-0 --timeout=300s
 ```
 
 ### Step-by-Step Deploy

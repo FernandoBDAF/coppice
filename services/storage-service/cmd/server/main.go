@@ -39,8 +39,7 @@ func main() {
 	logger.Info("Starting storage service",
 		logger.String("service", cfg.ServiceName),
 		logger.String("version", "1.0.0"),
-		logger.Bool("queue_enabled", cfg.QueueEnabled),
-		logger.Bool("auth_enabled", true)) // Auth is now always enabled
+		logger.Bool("queue_enabled", cfg.QueueEnabled))
 
 	// Create connection manager
 	connManager := database.NewConnectionManager(cfg)
@@ -56,12 +55,10 @@ func main() {
 
 	// Create repositories
 	profileRepo := repository.NewProfileRepository(connManager.GetDB())
-	authRepo := repository.NewAuthRepository(connManager.GetDB())
 
 	// Create services
 	profileService := service.NewProfileService(profileRepo)
-	authService := service.NewAuthService(authRepo)
-	batchService := service.NewAdvancedBatchOperationsService(profileService, authService, connManager.GetDB())
+	batchService := service.NewAdvancedBatchOperationsService(profileService, connManager.GetDB())
 
 	// Initialize messaging components if queue is enabled
 	// REVIEW: should we really connect to queue directly?
@@ -74,14 +71,10 @@ func main() {
 		messageProcessor = messaging.NewMessageProcessor()
 
 		// Create and register message handlers
-		authHandler := messaging.NewAuthHandler(authService)
 		batchHandler := messaging.NewBatchMessageHandler(batchService)
 		storageHandler := messaging.NewStorageHandler(profileService, batchService)
 
 		// Register handlers with the processor
-		if err := messageProcessor.RegisterHandler(authHandler); err != nil {
-			logger.Fatal("Failed to register auth handler", logger.ErrorField(err))
-		}
 		if err := messageProcessor.RegisterHandler(batchHandler); err != nil {
 			logger.Fatal("Failed to register batch handler", logger.ErrorField(err))
 		}
@@ -128,7 +121,6 @@ func main() {
 
 	// Create REST handlers
 	profileHandler := rest.NewProfileHandler(profileService)
-	authHandler := rest.NewAuthHandler(authService)
 	batchHandler := rest.NewBatchHandler(batchService)
 	healthHandler := rest.NewHealthHandler(connManager.GetDB())
 
@@ -136,20 +128,18 @@ func main() {
 	restServer := rest.NewServer(cfg)
 
 	// Register all handlers with the REST server
-	restServer.RegisterRoutes(profileHandler, authHandler, batchHandler, healthHandler)
+	restServer.RegisterRoutes(profileHandler, batchHandler, healthHandler)
 
-	logger.Info("Phase 2.1 Advanced Batch Operations complete!",
-		logger.String("auth_service", "ACTIVE"),
+	logger.Info("Service initialization complete!",
 		logger.String("batch_service", "ACTIVE"),
 		logger.Bool("profile_service", profileService != nil),
-		logger.Bool("auth_service_ready", authService != nil),
 		logger.Bool("batch_service_ready", batchService != nil),
 		logger.Bool("rest_server_ready", restServer != nil),
 		logger.String("batch_endpoints", "REGISTERED"))
 
 	// Start REST server
 	go func() {
-		logger.Info("Starting REST server", logger.String("addr", fmt.Sprintf(":%d", cfg.ServerPort)))
+		logger.Info("Starting REST server", logger.String("addr", fmt.Sprintf(":%s", cfg.ServerPort)))
 		if err := restServer.Start(); err != nil {
 			logger.Fatal("Failed to start REST server", logger.ErrorField(err))
 		}
@@ -158,7 +148,7 @@ func main() {
 	// Create and start gRPC server
 	// REVIEW: implement gRPC server
 	go func() {
-		lis, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.GRPCPort))
+		lis, err := net.Listen("tcp", fmt.Sprintf(":%s", cfg.GRPCPort))
 		if err != nil {
 			logger.Fatal("Failed to listen on gRPC port", logger.ErrorField(err))
 		}
@@ -176,13 +166,13 @@ func main() {
 		// Register reflection service (for development)
 		reflection.Register(grpcServer)
 
-		logger.Info("Starting gRPC server", logger.String("addr", fmt.Sprintf(":%d", cfg.GRPCPort)))
+		logger.Info("Starting gRPC server", logger.String("addr", fmt.Sprintf(":%s", cfg.GRPCPort)))
 		if err := grpcServer.Serve(lis); err != nil {
 			logger.Fatal("Failed to serve gRPC", logger.ErrorField(err))
 		}
 	}()
 
-	logger.Info("Storage service started successfully - Auth service integration ready!")
+	logger.Info("Storage service started successfully!")
 
 	// Wait for interrupt signal to gracefully shut down
 	sigChan := make(chan os.Signal, 1)

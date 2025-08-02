@@ -73,6 +73,7 @@ router.post("/token/validate", async (req, res) => {
           valid: false,
         },
       });
+      console.error(validation.error);
     }
   } catch (error) {
     res.status(401).json({

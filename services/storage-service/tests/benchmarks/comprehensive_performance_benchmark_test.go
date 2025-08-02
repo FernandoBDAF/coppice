@@ -22,9 +22,7 @@ import (
 type ComprehensiveBenchmarkSuite struct {
 	connManager         *database.ConnectionManager
 	profileService      *service.ProfileService
-	authService         *service.AuthService
 	batchService        *service.AdvancedBatchOperationsService
-	authMessageHandler  *messaging.AuthHandler
 	batchMessageHandler *messaging.BatchMessageHandler
 	optimizationManager *performance.OptimizationManager
 }
@@ -51,19 +49,15 @@ func setupComprehensiveBenchmarkSuite(b *testing.B) *ComprehensiveBenchmarkSuite
 
 	// Create repositories
 	profileRepo := repository.NewProfileRepository(connManager.GetDB())
-	authRepo := repository.NewAuthRepository(connManager.GetDB())
 
 	// Create services
 	profileService := service.NewProfileService(profileRepo)
-	authService := service.NewAuthService(authRepo)
 	batchService := service.NewAdvancedBatchOperationsService(
 		profileService,
-		authService,
 		connManager.GetDB(),
 	)
 
 	// Create message handlers
-	authMessageHandler := messaging.NewAuthHandler(authService)
 	batchMessageHandler := messaging.NewBatchMessageHandler(batchService)
 
 	// Create optimization manager
@@ -74,89 +68,9 @@ func setupComprehensiveBenchmarkSuite(b *testing.B) *ComprehensiveBenchmarkSuite
 	return &ComprehensiveBenchmarkSuite{
 		connManager:         connManager,
 		profileService:      profileService,
-		authService:         authService,
 		batchService:        batchService,
-		authMessageHandler:  authMessageHandler,
 		batchMessageHandler: batchMessageHandler,
 		optimizationManager: optimizationManager,
-	}
-}
-
-// BenchmarkAuthUserCreation benchmarks auth user creation performance
-func BenchmarkAuthUserCreation(b *testing.B) {
-	suite := setupComprehensiveBenchmarkSuite(b)
-	defer suite.connManager.Close()
-
-	b.ResetTimer()
-	b.ReportAllocs()
-
-	for i := 0; i < b.N; i++ {
-		userReq := &models.AuthUserRequest{
-			Email:     fmt.Sprintf("benchmark-user-%d@example.com", i),
-			Password:  "BenchmarkPassword123!",
-			FirstName: fmt.Sprintf("Benchmark%d", i),
-			LastName:  "User",
-			Role:      "user",
-		}
-
-		startTime := time.Now()
-		user, err := suite.authService.CreateUser(context.Background(), userReq)
-		duration := time.Since(startTime)
-
-		require.NoError(b, err)
-		require.NotNil(b, user)
-
-		// Record performance sample
-		suite.optimizationManager.RecordPerformanceSample("auth_user_creation", duration, true)
-
-		// Target: < 100ms per user creation
-		if duration > 100*time.Millisecond {
-			b.Logf("Warning: User creation took %v (target: <100ms)", duration)
-		}
-	}
-}
-
-// BenchmarkAuthUserAuthentication benchmarks auth user authentication performance
-func BenchmarkAuthUserAuthentication(b *testing.B) {
-	suite := setupComprehensiveBenchmarkSuite(b)
-	defer suite.connManager.Close()
-
-	// Pre-create a user for authentication benchmarks
-	userReq := &models.AuthUserRequest{
-		Email:     "auth-benchmark@example.com",
-		Password:  "BenchmarkPassword123!",
-		FirstName: "AuthBenchmark",
-		LastName:  "User",
-		Role:      "user",
-	}
-
-	_, err := suite.authService.CreateUser(context.Background(), userReq)
-	require.NoError(b, err)
-
-	b.ResetTimer()
-	b.ReportAllocs()
-
-	for i := 0; i < b.N; i++ {
-		startTime := time.Now()
-		authUser, err := suite.authService.AuthenticateUser(
-			context.Background(),
-			"auth-benchmark@example.com",
-			"BenchmarkPassword123!",
-			"127.0.0.1",
-			"benchmark-test",
-		)
-		duration := time.Since(startTime)
-
-		require.NoError(b, err)
-		require.NotNil(b, authUser)
-
-		// Record performance sample
-		suite.optimizationManager.RecordPerformanceSample("auth_user_authentication", duration, true)
-
-		// Target: < 50ms per authentication
-		if duration > 50*time.Millisecond {
-			b.Logf("Warning: Authentication took %v (target: <50ms)", duration)
-		}
 	}
 }
 
@@ -277,79 +191,6 @@ func BenchmarkLargeBatchOperations(b *testing.B) {
 		successRate := result.GetSuccessRate()
 		if successRate < 95.0 {
 			b.Logf("Warning: Success rate %v%% (target: >95%%)", successRate)
-		}
-	}
-}
-
-// BenchmarkAuthBatchOperations benchmarks auth-specific batch operations
-func BenchmarkAuthBatchOperations(b *testing.B) {
-	suite := setupComprehensiveBenchmarkSuite(b)
-	defer suite.connManager.Close()
-
-	b.ResetTimer()
-	b.ReportAllocs()
-
-	for i := 0; i < b.N; i++ {
-		batchReq := createAuthBatchRequest(models.BatchModeIndividual, 25, i)
-
-		startTime := time.Now()
-		result, err := suite.batchService.ProcessBatch(context.Background(), batchReq)
-		duration := time.Since(startTime)
-
-		require.NoError(b, err)
-		require.NotNil(b, result)
-
-		// Record performance sample
-		suite.optimizationManager.RecordPerformanceSample("batch_auth_25ops", duration, result.IsSuccessful())
-
-		// Target: < 12s for 25 auth operations (auth operations are more expensive)
-		if duration > 12*time.Second {
-			b.Logf("Warning: Auth batch (25 ops) took %v (target: <12s)", duration)
-		}
-	}
-}
-
-// BenchmarkMessageHandlerAuth benchmarks auth message handler performance
-func BenchmarkMessageHandlerAuth(b *testing.B) {
-	suite := setupComprehensiveBenchmarkSuite(b)
-	defer suite.connManager.Close()
-
-	b.ResetTimer()
-	b.ReportAllocs()
-
-	for i := 0; i < b.N; i++ {
-		userReq := &models.AuthUserRequest{
-			Email:     fmt.Sprintf("msg-benchmark-user-%d@example.com", i),
-			Password:  "MessageBenchmark123!",
-			FirstName: fmt.Sprintf("MsgBench%d", i),
-			LastName:  "User",
-			Role:      "user",
-		}
-
-		userJSON, err := json.Marshal(userReq)
-		require.NoError(b, err)
-
-		message := &messaging.Message{
-			ID:         fmt.Sprintf("bench-auth-msg-%d", i),
-			Type:       "auth.user.create",
-			RoutingKey: "auth.user.create",
-			Payload:    userJSON,
-			Timestamp:  time.Now(),
-		}
-
-		startTime := time.Now()
-		msgResp, err := suite.authMessageHandler.Handle(context.Background(), message)
-		duration := time.Since(startTime)
-
-		require.NoError(b, err)
-		require.True(b, msgResp.Success)
-
-		// Record performance sample
-		suite.optimizationManager.RecordPerformanceSample("message_auth_create", duration, msgResp.Success)
-
-		// Target: < 200ms per message (including queue overhead simulation)
-		if duration > 200*time.Millisecond {
-			b.Logf("Warning: Auth message processing took %v (target: <200ms)", duration)
 		}
 	}
 }
@@ -514,45 +355,6 @@ func createProfileBatchRequest(mode models.BatchProcessingMode, numOps, seed int
 			Mode:                mode,
 			FailureHandling:     models.BatchContinueOnFail,
 			MaxConcurrency:      5,
-			TimeoutPerOperation: 30 * time.Second,
-			TotalTimeout:        5 * time.Minute,
-			ValidationLevel:     models.BatchValidationBasic,
-			EnableRollback:      false,
-			EnableProgressTrack: false, // Disable for benchmarks
-		},
-	}
-}
-
-// createAuthBatchRequest creates a benchmark auth batch request
-func createAuthBatchRequest(mode models.BatchProcessingMode, numOps, seed int) *models.BatchRequest {
-	operations := make([]models.BatchOperationItem, numOps)
-
-	for i := 0; i < numOps; i++ {
-		userData := map[string]interface{}{
-			"email":      fmt.Sprintf("bench-auth-test-%d-%d@example.com", seed, i),
-			"password":   "BenchPassword123!",
-			"first_name": fmt.Sprintf("AuthBench%d", seed*1000+i),
-			"last_name":  "User",
-			"role":       "user",
-		}
-
-		dataJSON, _ := json.Marshal(userData)
-
-		operations[i] = models.BatchOperationItem{
-			ID:         fmt.Sprintf("bench-auth-op-%d-%d", seed, i),
-			Operation:  models.BatchOperationCreate,
-			Data:       dataJSON,
-			ExternalID: fmt.Sprintf("ext-bench-auth-%d-%d", seed, i),
-		}
-	}
-
-	return &models.BatchRequest{
-		Type:       "auth",
-		Operations: operations,
-		Options: models.BatchOptions{
-			Mode:                mode,
-			FailureHandling:     models.BatchContinueOnFail,
-			MaxConcurrency:      3,
 			TimeoutPerOperation: 30 * time.Second,
 			TotalTimeout:        5 * time.Minute,
 			ValidationLevel:     models.BatchValidationBasic,

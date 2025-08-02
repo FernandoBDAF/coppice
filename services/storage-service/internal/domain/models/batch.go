@@ -39,7 +39,7 @@ const (
 // BatchRequest represents a batch operation request
 type BatchRequest struct {
 	ID          string               `json:"id"`
-	Type        string               `json:"type"` // "profile" or "auth"
+	Type        string               `json:"type"` // "profile" only
 	Operations  []BatchOperationItem `json:"operations" validate:"required,min=1,max=1000"`
 	Options     BatchOptions         `json:"options"`
 	Metadata    map[string]string    `json:"metadata,omitempty"`
@@ -210,7 +210,7 @@ const (
 	RollbackStatusPartial    RollbackStatus = "partial"
 )
 
-// Validation methods
+// Validate methods
 
 // Validate validates the batch request
 func (br *BatchRequest) Validate() error {
@@ -218,8 +218,8 @@ func (br *BatchRequest) Validate() error {
 		return fmt.Errorf("batch type is required")
 	}
 
-	if br.Type != "profile" && br.Type != "auth" {
-		return fmt.Errorf("batch type must be 'profile' or 'auth'")
+	if br.Type != "profile" {
+		return fmt.Errorf("batch type must be 'profile'")
 	}
 
 	if len(br.Operations) == 0 {

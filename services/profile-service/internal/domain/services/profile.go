@@ -32,13 +32,13 @@ type CacheMetrics struct {
 
 // ✅ NEW: Comprehensive service health status
 type ServiceHealthStatus struct {
-	Status               string                         `json:"status"`
-	CacheEnabled         bool                           `json:"cache_enabled"`
-	CacheMetrics         *CacheMetrics                  `json:"cache_metrics"`
-	CircuitBreakerStats  cache.CircuitBreakerStats      `json:"circuit_breaker_stats"`
-	CacheHitRatio        float64                        `json:"cache_hit_ratio"`
-	HealthChecks         map[string]string              `json:"health_checks"`
-	Timestamp            time.Time                      `json:"timestamp"`
+	Status              string                    `json:"status"`
+	CacheEnabled        bool                      `json:"cache_enabled"`
+	CacheMetrics        *CacheMetrics             `json:"cache_metrics"`
+	CircuitBreakerStats cache.CircuitBreakerStats `json:"circuit_breaker_stats"`
+	CacheHitRatio       float64                   `json:"cache_hit_ratio"`
+	HealthChecks        map[string]string         `json:"health_checks"`
+	Timestamp           time.Time                 `json:"timestamp"`
 }
 
 // ProfileError represents a profile service error
@@ -57,12 +57,19 @@ func (e *ProfileError) Error() string {
 
 // ProfileServiceInterface defines the interface for profile-related operations
 type ProfileServiceInterface interface {
+	// Existing profile methods
 	GetProfiles(ctx context.Context) ([]*models.Profile, error)
 	GetProfile(ctx context.Context, id string) (*models.Profile, error)
 	CreateProfile(ctx context.Context, req *models.ProfileRequest) (*models.Profile, error)
 	UpdateProfile(ctx context.Context, id string, req *models.ProfileRequest) (*models.Profile, error)
 	DeleteProfile(ctx context.Context, id string) error
 	SubmitTask(ctx context.Context, profileID string, req *models.TaskRequest) (*models.Task, error)
+
+	// NEW: User management methods
+	CreateUser(ctx context.Context, userData *models.CreateUserRequest) (*models.User, error)
+	GetUserByEmail(ctx context.Context, email string) (*models.User, error)
+	UpdateUser(ctx context.Context, userID string, userData *models.UpdateUserRequest) (*models.User, error)
+	DeleteUser(ctx context.Context, userID string) error
 	// ✅ NEW: Specialized task submission methods
 	SubmitEmailTask(ctx context.Context, profileID string, emailPayload *models.EmailTaskPayload) (*models.EmailTaskResponse, error)
 	SubmitImageTask(ctx context.Context, profileID string, imagePayload *models.ImageTaskPayload) (*models.ImageTaskResponse, error)
@@ -81,13 +88,14 @@ type ProfileService struct {
 	storageClient *StorageClient
 	queueClient   *messaging.QueueClient
 	cacheClient   cache.CacheClientInterface
+	authClient    AuthServiceClientInterface // Changed from *AuthServiceClient to interface
 	config        *config.Config
 	metrics       *CacheMetrics
 	logger        *zap.Logger
 }
 
 // NewProfileService creates a new profile service with cache integration
-func NewProfileService(cfg *config.Config, storageClient *StorageClient, cacheClient cache.CacheClientInterface, logger *zap.Logger) *ProfileService {
+func NewProfileService(cfg *config.Config, storageClient *StorageClient, cacheClient cache.CacheClientInterface, authClient AuthServiceClientInterface, logger *zap.Logger) *ProfileService {
 	// ✅ ENHANCED: Initialize queue client with new configuration structure
 	queueConfig := &messaging.QueueConfig{
 		URL:                   cfg.Queue.URL,
@@ -119,6 +127,7 @@ func NewProfileService(cfg *config.Config, storageClient *StorageClient, cacheCl
 		storageClient: storageClient,
 		queueClient:   queueClient,
 		cacheClient:   cacheClient,
+		authClient:    authClient,
 		config:        cfg,
 		metrics:       &CacheMetrics{},
 		logger:        logger,
@@ -359,7 +368,7 @@ func (s *ProfileService) UpdateProfile(ctx context.Context, id string, req *mode
 					zap.Error(err))
 			} else {
 				s.logger.Debug("Successfully invalidated profile cache after update",
-		zap.String("id", id))
+					zap.String("id", id))
 			}
 		}()
 	}
@@ -404,7 +413,7 @@ func (s *ProfileService) DeleteProfile(ctx context.Context, id string) error {
 					zap.Error(err))
 			} else {
 				s.logger.Debug("Successfully invalidated profile cache after deletion",
-		zap.String("id", id))
+					zap.String("id", id))
 			}
 		}()
 	}
@@ -497,7 +506,7 @@ func (s *ProfileService) SubmitTask(ctx context.Context, profileID string, req *
 
 	logger.LogInfo(ctx, "Successfully processed multi-worker task",
 		zap.String("profile_id", profileID),
-				zap.String("task_id", task.ID.String()),
+		zap.String("task_id", task.ID.String()),
 		zap.String("task_type", req.Type),
 		zap.String("routing_key", routingKey),
 		zap.String("worker_target", s.getWorkerTarget(req.Type)))
@@ -518,12 +527,12 @@ func (s *ProfileService) SubmitEmailTask(ctx context.Context, profileID string, 
 		logger.LogError(ctx, "Email task validation failed", err,
 			zap.String("profile_id", profileID),
 			zap.String("email_to", emailPayload.To))
-			return nil, &ProfileError{
+		return nil, &ProfileError{
 			Code:    400,
 			Message: fmt.Sprintf("Email task validation failed: %s", err.Error()),
-				Err:     err,
-			}
+			Err:     err,
 		}
+	}
 
 	// Create task request - convert struct to map for validation compatibility
 	payloadMap := map[string]interface{}{
@@ -817,13 +826,13 @@ func (s *ProfileService) GetServiceHealth() *ServiceHealthStatus {
 	}
 
 	serviceHealth := &ServiceHealthStatus{
-		Status:               "ok",
-		CacheEnabled:         s.config.Cache.Enabled,
-		CacheMetrics:         s.metrics,
-		CircuitBreakerStats:  s.cacheClient.GetCircuitBreakerStats(),
-		CacheHitRatio:        cacheHitRatio,
-		HealthChecks:         healthChecks,
-		Timestamp:            time.Now(),
+		Status:              "ok",
+		CacheEnabled:        s.config.Cache.Enabled,
+		CacheMetrics:        s.metrics,
+		CircuitBreakerStats: s.cacheClient.GetCircuitBreakerStats(),
+		CacheHitRatio:       cacheHitRatio,
+		HealthChecks:        healthChecks,
+		Timestamp:           time.Now(),
 	}
 
 	// Check if any health check failed
@@ -991,5 +1000,78 @@ func (s *ProfileService) WarmProfileCache(ctx context.Context, profileIDs []stri
 	}
 
 	s.logger.Info("Successfully warmed profile cache", zap.Int("count", warmedCount))
+	return nil
+}
+
+func (s *ProfileService) CreateUser(ctx context.Context, userData *models.CreateUserRequest) (*models.User, error) {
+	s.logger.Info("Creating user via auth service", zap.String("email", userData.Email))
+
+	user, err := s.authClient.CreateUser(ctx, userData)
+	if err != nil {
+		s.logger.Error("Failed to create user via auth service",
+			zap.String("email", userData.Email),
+			zap.Error(err))
+		return nil, fmt.Errorf("failed to create user: %w", err)
+	}
+
+	s.logger.Info("User created successfully", zap.String("user_id", user.ID))
+	return user, nil
+}
+
+func (s *ProfileService) GetUserByEmail(ctx context.Context, email string) (*models.User, error) {
+	s.logger.Debug("Getting user by email via auth service", zap.String("email", email))
+
+	user, err := s.authClient.GetUserByEmail(ctx, email)
+	if err != nil {
+		s.logger.Error("Failed to get user by email via auth service",
+			zap.String("email", email),
+			zap.Error(err))
+		return nil, fmt.Errorf("failed to get user: %w", err)
+	}
+
+	return user, nil
+}
+
+func (s *ProfileService) UpdateUser(ctx context.Context, userID string, userData *models.UpdateUserRequest) (*models.User, error) {
+	s.logger.Info("Updating user via auth service", zap.String("user_id", userID))
+
+	user, err := s.authClient.UpdateUser(ctx, userID, userData)
+	if err != nil {
+		s.logger.Error("Failed to update user via auth service",
+			zap.String("user_id", userID),
+			zap.Error(err))
+		return nil, fmt.Errorf("failed to update user: %w", err)
+	}
+
+	s.logger.Info("User updated successfully", zap.String("user_id", user.ID))
+	return user, nil
+}
+
+func (s *ProfileService) DeleteUser(ctx context.Context, userID string) error {
+	s.logger.Info("Deleting user via auth service", zap.String("user_id", userID))
+
+	// Delete user via auth service
+	err := s.authClient.DeleteUser(ctx, userID)
+	if err != nil {
+		s.logger.Error("Failed to delete user via auth service",
+			zap.String("user_id", userID),
+			zap.Error(err))
+		return fmt.Errorf("failed to delete user: %w", err)
+	}
+
+	// Delete associated profile (only if storage client is available)
+	if s.storageClient != nil {
+		if err := s.DeleteProfile(ctx, userID); err != nil {
+			s.logger.Warn("Failed to delete associated profile",
+				zap.String("user_id", userID),
+				zap.Error(err))
+			// Don't fail user deletion if profile deletion fails
+		}
+	} else {
+		s.logger.Debug("Storage client not available, skipping profile deletion",
+			zap.String("user_id", userID))
+	}
+
+	s.logger.Info("User deleted successfully", zap.String("user_id", userID))
 	return nil
 }

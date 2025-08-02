@@ -45,25 +45,16 @@ type ObservabilityConfig struct {
 
 // AlertThresholds defines thresholds for various alerts
 type AlertThresholds struct {
-	ErrorRatePercent      float64       `json:"error_rate_percent"`
-	ResponseTimeP95       time.Duration `json:"response_time_p95"`
-	MemoryUsageMB         int64         `json:"memory_usage_mb"`
-	CPUUsagePercent       float64       `json:"cpu_usage_percent"`
-	QueueDepth            int           `json:"queue_depth"`
-	FailedBatchesPercent  float64       `json:"failed_batches_percent"`
-	AuthFailuresPerMinute int           `json:"auth_failures_per_minute"`
+	ErrorRatePercent     float64       `json:"error_rate_percent"`
+	ResponseTimeP95      time.Duration `json:"response_time_p95"`
+	MemoryUsageMB        int64         `json:"memory_usage_mb"`
+	CPUUsagePercent      float64       `json:"cpu_usage_percent"`
+	QueueDepth           int           `json:"queue_depth"`
+	FailedBatchesPercent float64       `json:"failed_batches_percent"`
 }
 
 // EnhancedMetricsCollector collects comprehensive metrics
 type EnhancedMetricsCollector struct {
-	// Auth metrics
-	authUserCreations   prometheus.Counter
-	authAuthentications prometheus.Counter
-	authFailures        prometheus.Counter
-	authPasswordResets  prometheus.Counter
-	authLoginAttempts   *prometheus.CounterVec
-	authResponseTime    *prometheus.HistogramVec
-
 	// Batch operation metrics
 	batchOperationsTotal *prometheus.CounterVec
 	batchProcessingTime  *prometheus.HistogramVec
@@ -101,7 +92,6 @@ type EnhancedHealthMonitor struct {
 	lastUpdate    time.Time
 	connManager   *database.ConnectionManager
 	batchService  *service.AdvancedBatchOperationsService
-	authService   *service.AuthService
 	log           *zap.Logger
 	mu            sync.RWMutex
 }
@@ -173,7 +163,6 @@ const (
 	AlertTypePerformance AlertType = "performance"
 	AlertTypeError       AlertType = "error"
 	AlertTypeResource    AlertType = "resource"
-	AlertTypeAuth        AlertType = "auth"
 	AlertTypeBatch       AlertType = "batch"
 	AlertTypeSystem      AlertType = "system"
 )
@@ -222,7 +211,6 @@ type LogAnomaly struct {
 func NewEnhancedObservabilityManager(
 	connManager *database.ConnectionManager,
 	batchService *service.AdvancedBatchOperationsService,
-	authService *service.AuthService,
 	performanceMonitor *performance.OptimizationManager,
 ) *EnhancedObservabilityManager {
 	config := &ObservabilityConfig{
@@ -233,13 +221,12 @@ func NewEnhancedObservabilityManager(
 		MetricsPort:         9090,
 		HealthCheckInterval: 30 * time.Second,
 		AlertThresholds: AlertThresholds{
-			ErrorRatePercent:      5.0,
-			ResponseTimeP95:       500 * time.Millisecond,
-			MemoryUsageMB:         512,
-			CPUUsagePercent:       80.0,
-			QueueDepth:            1000,
-			FailedBatchesPercent:  10.0,
-			AuthFailuresPerMinute: 20,
+			ErrorRatePercent:     5.0,
+			ResponseTimeP95:      500 * time.Millisecond,
+			MemoryUsageMB:        512,
+			CPUUsagePercent:      80.0,
+			QueueDepth:           1000,
+			FailedBatchesPercent: 10.0,
 		},
 	}
 
@@ -251,7 +238,7 @@ func NewEnhancedObservabilityManager(
 
 	// Initialize components
 	manager.metricsCollector = NewEnhancedMetricsCollector()
-	manager.healthMonitor = NewEnhancedHealthMonitor(connManager, batchService, authService)
+	manager.healthMonitor = NewEnhancedHealthMonitor(connManager, batchService)
 	manager.alertManager = NewAlertManager(config.AlertThresholds)
 	manager.logAnalyzer = NewLogAnalyzer()
 
@@ -475,7 +462,6 @@ type MetricsSummary struct {
 	ErrorRate           float64       `json:"error_rate"`
 	AverageResponseTime time.Duration `json:"average_response_time"`
 	BatchOperations     int64         `json:"batch_operations"`
-	AuthOperations      int64         `json:"auth_operations"`
 	MessageProcessed    int64         `json:"messages_processed"`
 }
 
@@ -484,18 +470,6 @@ type MetricsSummary struct {
 // NewEnhancedMetricsCollector creates a new enhanced metrics collector
 func NewEnhancedMetricsCollector() *EnhancedMetricsCollector {
 	return &EnhancedMetricsCollector{
-		authUserCreations: promauto.NewCounter(prometheus.CounterOpts{
-			Name: "storage_auth_user_creations_total",
-			Help: "Total number of auth user creations",
-		}),
-		authAuthentications: promauto.NewCounter(prometheus.CounterOpts{
-			Name: "storage_auth_authentications_total",
-			Help: "Total number of auth authentications",
-		}),
-		authFailures: promauto.NewCounter(prometheus.CounterOpts{
-			Name: "storage_auth_failures_total",
-			Help: "Total number of auth failures",
-		}),
 		batchOperationsTotal: promauto.NewCounterVec(prometheus.CounterOpts{
 			Name: "storage_batch_operations_total",
 			Help: "Total number of batch operations",
@@ -521,13 +495,12 @@ func NewEnhancedMetricsCollector() *EnhancedMetricsCollector {
 }
 
 // NewEnhancedHealthMonitor creates a new enhanced health monitor
-func NewEnhancedHealthMonitor(connManager *database.ConnectionManager, batchService *service.AdvancedBatchOperationsService, authService *service.AuthService) *EnhancedHealthMonitor {
+func NewEnhancedHealthMonitor(connManager *database.ConnectionManager, batchService *service.AdvancedBatchOperationsService) *EnhancedHealthMonitor {
 	monitor := &EnhancedHealthMonitor{
 		checks:        make(map[string]EnhancedHealthCheck),
 		overallStatus: HealthStatusUnknown,
 		connManager:   connManager,
 		batchService:  batchService,
-		authService:   authService,
 		log:           logger.Get().Named("enhanced_health_monitor"),
 	}
 
@@ -542,12 +515,6 @@ func (ehm *EnhancedHealthMonitor) registerHealthChecks() {
 	// Database health check
 	ehm.checks["database"] = EnhancedHealthCheck{
 		Name:   "Database Connection",
-		Status: HealthStatusUnknown,
-	}
-
-	// Auth service health check
-	ehm.checks["auth_service"] = EnhancedHealthCheck{
-		Name:   "Auth Service",
 		Status: HealthStatusUnknown,
 	}
 
@@ -610,8 +577,6 @@ func (ehm *EnhancedHealthMonitor) runHealthCheck(name string) EnhancedHealthChec
 	switch name {
 	case "database":
 		check = ehm.checkDatabase()
-	case "auth_service":
-		check = ehm.checkAuthService()
 	case "batch_service":
 		check = ehm.checkBatchService()
 	case "memory":
@@ -650,25 +615,6 @@ func (ehm *EnhancedHealthMonitor) checkDatabase() EnhancedHealthCheck {
 
 	check.Status = HealthStatusHealthy
 	check.Message = "Database connection healthy"
-	return check
-}
-
-// checkAuthService checks auth service health
-func (ehm *EnhancedHealthMonitor) checkAuthService() EnhancedHealthCheck {
-	check := EnhancedHealthCheck{
-		Name:        "Auth Service",
-		LastChecked: time.Now(),
-	}
-
-	if ehm.authService == nil {
-		check.Status = HealthStatusUnhealthy
-		check.Message = "Auth service not initialized"
-		return check
-	}
-
-	// Test auth service functionality (simplified check)
-	check.Status = HealthStatusHealthy
-	check.Message = "Auth service operational"
 	return check
 }
 
@@ -866,7 +812,6 @@ func (emc *EnhancedMetricsCollector) GetSummary() *MetricsSummary {
 		ErrorRate:           2.5,
 		AverageResponseTime: 150 * time.Millisecond,
 		BatchOperations:     50,
-		AuthOperations:      200,
 		MessageProcessed:    75,
 	}
 }

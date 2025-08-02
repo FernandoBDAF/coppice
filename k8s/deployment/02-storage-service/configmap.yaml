@@ -3,8 +3,20 @@
 # =============================================================================
 # 📚 EDUCATIONAL OVERVIEW:
 # This ConfigMap provides configuration for the storage service optimized
-# for Kind development clusters. It includes database connection settings,
-# server configuration, and debugging options.
+# for Kind development clusters. The storage service is focused ONLY on
+# profile data management - all auth functionality has been removed.
+#
+# ❌ NO AUTH FUNCTIONALITY: This service no longer handles:
+# - User management
+# - Authentication
+# - Authorization
+# - Audit logging
+#
+# ✅ PROFILE FOCUS: This service handles:
+# - Profile CRUD operations
+# - Address management
+# - Contact information
+# - Batch profile operations
 #
 # 🔧 KIND OPTIMIZATIONS:
 # - Debug logging enabled for development

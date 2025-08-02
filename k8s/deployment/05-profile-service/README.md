@@ -1,26 +1,26 @@
 # Profile Service – Kubernetes Deployment
 
-**Service**: Profile management orchestrator service  
+**Service**: Profile management orchestrator service with user management capabilities  
 **Port**: NodePort 30085 (HTTP)  
 **Dependencies**: Auth, Cache, Storage, Queue services  
-**Technology**: Node.js/Go orchestration service with full integration
+**Technology**: Node.js/Go orchestration service with full integration and enhanced auth client
 
 ---
 
 ## 🧱 Components
 
-| Resource       | Description                                   |
-| -------------- | --------------------------------------------- |
-| **Deployment** | Profile service app running on port 8080      |
-| **Service**    | NodePort 30085 for external access            |
-| **ConfigMap**  | Service integration and business logic config |
-| **Secret**     | API keys for all service dependencies         |
+| Resource       | Description                                                     |
+| -------------- | --------------------------------------------------------------- |
+| **Deployment** | Profile service app running on port 8080                        |
+| **Service**    | NodePort 30085 for external access                              |
+| **ConfigMap**  | Service integration, user management, and business logic config |
+| **Secret**     | API keys for all service dependencies                           |
 
 ## 🔁 Dependencies
 
-- **Auth Service**: Required for JWT token validation and user authentication
-- **Cache Service**: Required for profile caching and performance optimization
-- **Storage Service**: Required for persistent profile data storage
+- **Auth Service**: Required for JWT token validation, user authentication, and user management operations
+- **Cache Service**: Required for profile caching, session management, and performance optimization
+- **Storage Service**: Required for persistent profile data storage (profiles only)
 - **Queue Service**: Required for asynchronous task processing
 - **All backend services**: Redis, PostgreSQL, RabbitMQ (indirect dependencies)
 

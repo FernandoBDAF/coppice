@@ -8,15 +8,14 @@ import (
 
 	"github.com/fernandobarroso/microservices/services/profile-service/internal/domain/services"
 	"github.com/fernandobarroso/microservices/services/profile-service/internal/infrastructure/cache"
+
 	"go.uber.org/zap"
 )
 
 // Session represents a user session
 type Session struct {
-	UserID    string    `json:"user_id"`
-	Role      string    `json:"role"`
-	CreatedAt time.Time `json:"created_at"`
-	ExpiresAt time.Time `json:"expires_at"`
+	UserID string `json:"user_id"`
+	Role   string `json:"role"`
 }
 
 // SessionManagerInterface defines the interface for session management
@@ -44,9 +43,7 @@ func NewSessionManager(authClient *services.AuthServiceClient, cacheClient cache
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	logger.Info("I am here before the ping")
 	if err := cacheClient.Ping(ctx); err != nil {
-		logger.Info("I am here inside the error")
 		logger.Error("Failed to connect to cache service", zap.Error(err))
 		return nil, fmt.Errorf("failed to connect to cache service: %w", err)
 	}
@@ -72,9 +69,7 @@ func (m *SessionManager) CreateSession(userID, password string) (string, error) 
 	// Create session
 	session := &Session{
 		UserID:    userID,
-		Role:      "user", // Set default role
-		CreatedAt: time.Now(),
-		ExpiresAt: time.Now().Add(24 * time.Hour),
+		Role:      "user",
 	}
 
 	// Store session in cache service via HTTP
@@ -121,19 +116,8 @@ func (m *SessionManager) ValidateSession(tokenString string) (*Session, error) {
 		return nil, ErrInvalidSession
 	}
 
-	// Check if session is expired
-	if time.Now().After(session.ExpiresAt) {
-		m.logger.Info("Session expired, invalidating", zap.String("user_id", session.UserID))
-		// Async cleanup - don't fail validation if cleanup fails
-		go func() {
-			cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 3*time.Second)
-			defer cleanupCancel()
-			_ = m.cacheClient.Delete(cleanupCtx, fmt.Sprintf("session:%s", tokenString))
-		}()
-		return nil, ErrSessionExpired
-	}
-
 	// Validate token with auth service
+	// REVIEW: we should consider remove this call to the auth service
 	_, err = m.authClient.ValidateToken(context.Background(), tokenString)
 	if err != nil {
 		m.logger.Error("Auth service validation failed",

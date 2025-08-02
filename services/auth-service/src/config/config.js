@@ -19,9 +19,9 @@ class Config {
       accessTokenExpiry: process.env.ACCESS_TOKEN_EXPIRY || "15m",
       refreshTokenExpiry: process.env.REFRESH_TOKEN_EXPIRY || "7d",
       privateKeySecret:
-        process.env.JWT_PRIVATE_KEY_SECRET || "tweets-app-jwt-private-key",
+        process.env.JWT_PRIVATE_KEY_SECRET || "jwt-signing-key-dev",
       publicKeySecret:
-        process.env.JWT_PUBLIC_KEY_SECRET || "tweets-app-jwt-public-key",
+        process.env.JWT_PUBLIC_KEY_SECRET || "jwt-verification-key-dev",
     };
 
     this.security = {

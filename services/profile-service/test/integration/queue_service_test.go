@@ -159,7 +159,7 @@ func setupTestEnvironment(t *testing.T) (*gin.Engine, *MockQueueService, *handle
 	storageClient := &services.StorageClient{}
 
 	// Create profile service with mock dependencies
-	profileService := services.NewProfileService(cfg, storageClient, nil, nil)
+	profileService := services.NewProfileService(cfg, storageClient, nil, nil, logger.Logger)
 
 	// Create task handler
 	taskHandler := handlers.NewTaskHandler(profileService)

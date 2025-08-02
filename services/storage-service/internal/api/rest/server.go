@@ -8,47 +8,44 @@ import (
 	"microservices/services/profile-storage/internal/config"
 
 	"github.com/gorilla/mux"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 // Server represents the REST API server
 type Server struct {
 	config *config.Config
-	mux    *http.ServeMux
+	router *mux.Router
 }
 
 // NewServer creates a new REST server
 func NewServer(cfg *config.Config) *Server {
 	return &Server{
 		config: cfg,
-		mux:    http.NewServeMux(),
+		router: mux.NewRouter(),
 	}
 }
 
 // RegisterRoutes registers all API routes
-func (s *Server) RegisterRoutes(handlers ...interface{}) {
-	router := mux.NewRouter()
-	for _, handler := range handlers {
-		switch h := handler.(type) {
-		case *ProfileHandler:
-			h.RegisterRoutes(router)
-		case *AuthHandler:
-			h.RegisterRoutes(router)
-		case *BatchHandler:
-			h.RegisterRoutes(router)
-		case *HealthHandler:
-			h.RegisterRoutes(router)
-		case *MetricsHandler:
-			h.RegisterRoutes(router)
-		case *Handler:
-			h.RegisterRoutes(router)
-		}
-	}
-	s.mux.Handle("/", router)
+func (s *Server) RegisterRoutes(profileHandler *ProfileHandler, batchHandler *BatchHandler, healthHandler *HealthHandler) {
+	// Health check
+	s.router.HandleFunc("/health", healthHandler.handleHealth).Methods(http.MethodGet)
+
+	// API routes
+	api := s.router.PathPrefix("/api/v1").Subrouter()
+
+	// Profile routes
+	profileHandler.RegisterRoutes(api)
+
+	// Batch routes
+	batchHandler.RegisterRoutes(api)
+
+	// Metrics endpoint
+	s.router.Handle("/metrics", promhttp.Handler())
 }
 
 // Start starts the REST server
 func (s *Server) Start() error {
 	addr := fmt.Sprintf(":%s", s.config.ServerPort)
 	log.Printf("Starting REST server on %s", addr)
-	return http.ListenAndServe(addr, s.mux)
+	return http.ListenAndServe(addr, s.router)
 }

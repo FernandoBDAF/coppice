@@ -71,7 +71,7 @@ The microservices are deployed in dependency order to ensure proper service inte
 ```
 1. Cache Service (Redis) ←─── Foundation Layer
 2. Storage Service (PostgreSQL) ←─── Data Layer
-3. Auth Service (JWT) ←─── Security Layer
+3. Auth Service (JWT + PostgreSQL) ←─── Security Layer with Database
 4. Queue Service (RabbitMQ) ←─── Messaging Layer
 5. Profile Service (Orchestrator) ←─── Business Logic Layer
 6. Worker Service (Processors) ←─── Processing Layer
@@ -81,7 +81,7 @@ The microservices are deployed in dependency order to ensure proper service inte
 
 - **Cache Service**: No dependencies (foundation)
 - **Storage Service**: No dependencies (foundation)
-- **Auth Service**: Depends on Storage Service for user data
+- **Auth Service**: Self-contained with own PostgreSQL database
 - **Queue Service**: No direct dependencies (messaging backbone)
 - **Profile Service**: Depends on Auth, Cache, Storage, Queue services
 - **Worker Service**: Depends on Queue Service for task consumption
@@ -263,12 +263,14 @@ cd k8s/deployment/01-cache-service/
 
 # Deploy Redis StatefulSet first (dependency)
 # (it won't work withou first deploying secrets.yaml)
-kubectl apply -f redis-statefulset.yaml 
+kubectl apply -f redis-statefulset.yaml
+# REVIEW: WE NEED TO DEPLOY SECRETS 1ST, OTHERWISE IT DO NOT WORK 
 
 # Wait for Redis to be ready (critical for service startup)
 kubectl wait --for=condition=Ready pod/redis-0 --timeout=300s
 
 # Verify Redis is accessible
+# REVIEW: no pong recieved - NOAUTH Authentication required.
 kubectl exec redis-0 -- redis-cli ping
 # Expected output: PONG
 # got "NOAUTH Authentication required." instead
@@ -363,6 +365,7 @@ curl http://localhost:30081/ready
 
 # Internal metrics (requires network policy compliance)
 # this one is not working
+# REVIEW: NOT WORKING WELL
 kubectl run debug-metrics-$(date +%s) --image=busybox:1.35 --rm -i --restart=Never \
   --labels="app=cache-service" \
   -- timeout 10s wget -qO- http://cache-service:8081/metrics
@@ -478,6 +481,7 @@ kubectl describe nodes | grep -A 5 "Allocated resources"
 cd k8s/deployment/02-storage-service/
 
 # Deploy PostgreSQL StatefulSet
+# REVIEW: NEED TO DEPLOY SECRETS 1ST
 kubectl apply -f postgres-statefulset.yaml
 
 # Wait for PostgreSQL to be ready
@@ -574,12 +578,14 @@ curl -X DELETE http://localhost:30082/api/v1/profiles/$PROFILE_ID
 
 ```bash
 # Connect to database for verification
-kubectl exec -it postgres-0 -- psql -U profile_user -d profile_db
+kubectl exec -it postgres-0 -- psql -U profile_user -d profile_storage
 
 # Check tables and data
+# Commands when connected to postgres:
 \dt  -- List tables
 SELECT * FROM profiles LIMIT 5;  -- Check profile data
 \q   -- Exit
+
 ```
 
 ### **🔍 gRPC Testing (Advanced)**
@@ -590,6 +596,7 @@ brew install grpcurl  # macOS
 # or download from: https://github.com/fullstorydev/grpcurl/releases
 
 # Test gRPC reflection (may not work with NodePort due to networking)
+# REVIEW: NOT WORKING CORRECTLY
 grpcurl -plaintext localhost:30092 list
 # Note: This may fail due to Kind networking limitations
 # Failed to dial target host "localhost:30092": connection error: desc = "transport: error while dialing: dial tcp [::1]:30092: connect: connection refused"
@@ -645,31 +652,49 @@ kubectl run debug-storage --image=busybox:1.35 --rm -i --restart=Never \
 
 ### **🎯 Service Overview**
 
-The Auth Service provides JWT-based authentication and authorization for the entire microservices ecosystem. It integrates with the Storage Service for user data and provides secure token-based authentication.
+The Auth Service provides JWT-based authentication and authorization for the entire microservices ecosystem. It now has its own dedicated PostgreSQL database for user management, ensuring proper microservices separation of concerns.
 
 **Key Characteristics**:
 
-- **Technology**: Node.js with JWT tokens
+- **Technology**: Node.js with JWT tokens + PostgreSQL database
 - **Access Pattern**: REST API with JWT token generation/validation
 - **Port**: NodePort 30083
-- **Dependencies**: Storage Service (for user data)
+- **Dependencies**: Own PostgreSQL database (auth-postgres)
 - **Security**: JWT with RS256 signing, refresh tokens
+- **Data Ownership**: Complete user data management
 
 ### **📋 Prerequisites**
 
 ```bash
-# Verify Storage Service is running
+# Verify Cache and Storage Services are running (foundation services)
+kubectl get pods -l app=cache-service
 kubectl get pods -l app=storage-service
-kubectl get svc storage-service
-
-# Check Storage Service connectivity
-curl http://localhost:30082/health
 
 # Verify no conflicts on port 30083
 kubectl get svc --all-namespaces | grep 30083
+
+# Ensure sufficient storage for PostgreSQL
+kubectl get storageclass
 ```
 
 ### **🏗️ Architecture Components**
+
+#### **Database Layer** (`auth-postgres-statefulset.yaml`)
+
+```yaml
+# Dedicated PostgreSQL database for auth service:
+# - StatefulSet with persistent storage
+# - Database: auth_db, User: auth_user
+# - Isolated from other services
+# - Proper security contexts and resource limits
+```
+
+#### **Database Secret** (`auth-postgres-secret.yaml`)
+
+```yaml
+# PostgreSQL credentials (base64 encoded):
+# - password: Database password for auth_user
+```
 
 #### **Secrets Management** (`secrets.yaml`)
 
@@ -678,38 +703,57 @@ kubectl get svc --all-namespaces | grep 30083
 # - JWT_SECRET: Token signing key
 # - JWT_REFRESH_SECRET: Refresh token key
 # - SERVICE_API_KEY: Inter-service authentication
-# - STORAGE_SERVICE_API_KEY: Storage service access
+# - STORAGE_SERVICE_API_KEY: Storage service access (for profiles)
 ```
 
 #### **Auth Service Deployment** (`deployment.yaml`)
 
 ```yaml
 # Node.js authentication service with:
+# - Direct PostgreSQL database connection
 # - JWT token generation and validation
-# - Integration with Storage Service
+# - User management endpoints
 # - Rate limiting and security headers
 # - Comprehensive security contexts
 ```
 
 ### **🚀 Deployment Procedure**
 
-#### **Step 1: Deploy Secrets and Configuration**
+#### **Step 1: Deploy Database Infrastructure**
 
 ```bash
 # Navigate to auth service directory
 cd k8s/deployment/03-auth-service/
 
+# Deploy database secret first
+kubectl apply -f auth-postgres-secret.yaml
+
+# Deploy PostgreSQL StatefulSet and Service
+kubectl apply -f auth-postgres-statefulset.yaml
+
+# Wait for database to be ready
+kubectl wait --for=condition=Ready pod/auth-postgres-0 --timeout=300s
+
+# Verify database is running
+kubectl get pods -l app=auth-postgres
+kubectl get svc auth-postgres-service
+```
+
+#### **Step 2: Deploy Auth Service Configuration**
+
+```bash
 # Deploy secrets (contains JWT keys)
 kubectl apply -f secrets.yaml
 
-# Deploy configuration
+# Deploy configuration (includes database connection)
 kubectl apply -f configmap.yaml
 
-# Verify secrets are created
-kubectl get secrets auth-service-secrets
+# Verify secrets and config are created
+kubectl get secrets auth-service-secrets auth-postgres-secret
+kubectl get configmap auth-service-config
 ```
 
-#### **Step 2: Deploy Auth Service**
+#### **Step 3: Deploy Auth Service**
 
 ```bash
 # Deploy the authentication service
@@ -719,8 +763,8 @@ kubectl apply -f service.yaml
 # Wait for deployment to be ready
 kubectl wait --for=condition=Available deployment/auth-service --timeout=300s
 
-# Check integration with Storage Service
-kubectl logs deployment/auth-service | grep -i storage
+# Check database connectivity
+kubectl logs deployment/auth-service | grep -i "database\|postgres"
 ```
 
 ### **🧪 Comprehensive Testing**
@@ -734,35 +778,73 @@ cd k8s/scripts/services/
 
 # Test categories:
 # ✅ Health and readiness checks
+# ✅ Database connectivity
 # ✅ JWT token generation and validation
-# ✅ User authentication flow
+# ✅ User management operations (CRUD)
+# ✅ Authentication flow
 # ✅ Rate limiting functionality
-# ✅ Storage service integration
 # ✅ Error handling and security
+```
+
+#### **Manual Database Testing**
+
+**Database Connectivity**:
+
+```bash
+# Test database connection
+# REVIEW: maybe not working
+kubectl exec deployment/auth-service -- curl -s http://localhost:8080/health
+# Expected: {"status": "healthy", "database": "connected"}
+
+# Check database tables (should include users table)
+kubectl exec -it auth-postgres-0 -- psql -U auth_user -d auth_db -c "\dt"
 ```
 
 #### **Manual Authentication Testing**
 
-**Token Generation and Validation**:
+**User Management Operations**:
 
 ```bash
 # Health check
 curl http://localhost:30083/health
-# Expected: {"status": "healthy", "dependencies": {"storage": "connected"}}
+# Expected: {"status": "healthy", "database": "connected"}
 
-# User login (requires user in Storage Service)
-curl -X POST http://localhost:30083/v1/auth/login \
+# Create a new user (now handled by auth service directly)
+curl -X POST http://localhost:30083/v1/users \
   -H "Content-Type: application/json" \
   -d '{
     "email": "test@example.com",
-    "password": "testpassword"
+    "password": "testpassword123",
+    "first_name": "Test",
+    "last_name": "User"
+  }'
+
+# Create an admin
+curl -X POST http://localhost:30083/v1/users \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "admin@account.com",
+    "password": "testpassword123",
+    "first_name": "Test",
+    "last_name": "Admin",
+    "role": "admin"
+  }'
+
+# Expected response: {"status": "created", "user_id": "uuid"}
+
+# Admin login
+curl -X POST http://localhost:30083/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_id": "admin@account.com",
+    "password": "testpassword123"
   }'
 
 # Expected response: {"token": "jwt-token", "refresh_token": "refresh-jwt"}
 
 # Token validation
 TOKEN="<jwt-token-from-login>"
-curl -X GET http://localhost:30083/v1/auth/token/validate \
+curl -X POST http://localhost:30083/v1/auth/token/validate \
   -H "Authorization: Bearer $TOKEN"
 
 # Expected: {"valid": true, "user": {...}}
@@ -771,7 +853,7 @@ curl -X GET http://localhost:30083/v1/auth/token/validate \
 **User Registration Flow**:
 
 ```bash
-# Register new user (creates user in Storage Service)
+# Register new user (now creates user in auth service database)
 curl -X POST http://localhost:30083/api/v1/auth/register \
   -H "Content-Type: application/json" \
   -d '{
@@ -782,18 +864,33 @@ curl -X POST http://localhost:30083/api/v1/auth/register \
   }'
 
 # Expected: {"status": "created", "user_id": "uuid"}
+
+# Get user by email
+curl -X GET "http://localhost:30083/api/v1/users?email=newuser@example.com"
+# Expected: {"user": {...}}
 ```
 
 ### **🔍 Integration Testing**
 
-**Storage Service Integration**:
+**Database Integration**:
 
 ```bash
-# Verify auth service can communicate with storage
-kubectl exec deployment/auth-service -- curl -s http://storage-service:8080/health
+# Verify auth service database connectivity
+kubectl exec deployment/auth-service -- curl -s http://localhost:8080/health
 
-# Check user creation in storage service
-curl http://localhost:30082/api/v1/profiles | jq '.[] | select(.email=="newuser@example.com")'
+# Check user creation in auth database
+kubectl exec -it auth-postgres-0 -- psql -U auth_user -d auth_db \
+  -c "SELECT email, first_name, last_name FROM users WHERE email='newuser@example.com';"
+```
+
+**Profile Service Integration**:
+
+```bash
+# Verify profile service can access auth service for user data
+kubectl exec deployment/profile-service -- curl -s http://auth-service:8080/health
+
+# Test profile service user endpoint (should proxy to auth service)
+curl http://localhost:30085/api/v1/users/newuser@example.com
 ```
 
 ### **🔍 Troubleshooting Guide**
@@ -951,10 +1048,10 @@ cd k8s/scripts/services/
 
 ```bash
 # Publish email task
-curl -X POST http://localhost:30084/api/v1/queues/publish \
+curl -X POST http://localhost:30084/api/v1/queue/messages \
   -H "Content-Type: application/json" \
   -d '{
-    "routing_key": "email.send",
+    "type": "email_send",
     "payload": {
       "user_id": "123",
       "template": "welcome",
@@ -967,10 +1064,10 @@ curl -X POST http://localhost:30084/api/v1/queues/publish \
   }'
 
 # Publish image processing task
-curl -X POST http://localhost:30084/api/v1/queues/publish \
+curl -X POST http://localhost:30084/api/v1/queue/messages \
   -H "Content-Type: application/json" \
   -d '{
-    "routing_key": "image.process",
+    "type": "image_process",
     "payload": {
       "user_id": "123",
       "operation": "resize",
@@ -1203,27 +1300,42 @@ cd k8s/scripts/integration/
 **Complete Authentication Flow**:
 
 ```bash
-# 1. Create user via Profile Service (uses Storage Service)
+# Authenticate
+curl -X POST http://localhost:30085/api/v1/auth/token \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{
+    "user_id": "admin@account.com",
+    "password": "testpassword123"
+  }'
+```
+
+```bash
+# Extract token from response
+TOKEN="<jwt-token-from-response>"
+```
+
+```bash
+# Get profiles
+curl -X GET http://localhost:30085/api/v1/profiles \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+```bash
+# Create user
 curl -X POST http://localhost:30085/api/v1/profiles \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
   -d '{
     "email": "integration@test.com",
     "password": "testpass123",
     "first_name": "Integration",
     "last_name": "Test"
   }'
+```
 
-# 2. Login via Auth Service integration
-curl -X POST http://localhost:30085/api/v1/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "integration@test.com",
-    "password": "testpass123"
-  }'
-
-# Extract token from response
-TOKEN="<jwt-token-from-response>"
-
+```bash
 # 3. Use token for authenticated operations
 curl -X GET http://localhost:30085/api/v1/profiles/me \
   -H "Authorization: Bearer $TOKEN"
@@ -1247,20 +1359,29 @@ curl -X PUT http://localhost:30085/api/v1/profiles/123 \
 ```
 
 **Async Task Processing**:
-
 ```bash
-# Trigger async task via Profile Service
-curl -X POST http://localhost:30085/api/v1/profiles/tasks \
+# Send a email_notification task
+curl -X POST http://localhost:30085/api/v1/profiles/6f5cd429-1a27-4670-93b7-93267e6f7828/tasks/email \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "type": "email.send",
-    "data": {
-      "template": "profile_update",
-      "recipient": "integration@test.com"
-    }
+    "template": "This is a test email",
+    "to": "integration@test.com"
   }'
+```
 
+```bash
+# Send a email_notification task
+curl -X POST http://localhost:30085/api/v1/profiles/6f5cd429-1a27-4670-93b7-93267e6f7828/tasks/image \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "operation": "optimize",
+    "image_url": "http://image.example"
+  }'
+```
+
+```bash
 # Verify task was published to queue
 curl http://localhost:30084/api/v1/queues/status
 ```

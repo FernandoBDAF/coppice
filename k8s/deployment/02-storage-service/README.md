@@ -1,9 +1,10 @@
 # Storage Service – Kubernetes Deployment
 
-**Service**: PostgreSQL-backed data storage service  
+**Service**: PostgreSQL-backed profile data storage service  
 **Port**: NodePort 30082 (HTTP), 30092 (gRPC)  
 **Dependencies**: PostgreSQL StatefulSet  
-**Technology**: Go/Node.js with PostgreSQL 15.x backend
+**Technology**: Go/Node.js with PostgreSQL 15.x backend  
+**Focus**: Profile data only (user management moved to Auth Service)
 
 ---
 
@@ -19,9 +20,10 @@
 
 ## 🔁 Dependencies
 
-- **PostgreSQL StatefulSet**: Primary database for persistent data storage
+- **PostgreSQL StatefulSet**: Primary database for profile data storage
 - **Storage Class**: `standard` for PostgreSQL persistent volumes
 - **No upstream services**: Foundation layer service
+- **No auth functionality**: User management handled by Auth Service
 
 ## 🚀 Deployment
 
