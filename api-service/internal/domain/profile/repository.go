@@ -14,4 +14,3 @@ type Repository interface {
 	Delete(ctx context.Context, id uuid.UUID) error
 	List(ctx context.Context, page, pageSize int) ([]*Profile, error)
 }
-

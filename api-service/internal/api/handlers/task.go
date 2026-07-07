@@ -111,4 +111,3 @@ func toString(value interface{}) string {
 		return ""
 	}
 }
-

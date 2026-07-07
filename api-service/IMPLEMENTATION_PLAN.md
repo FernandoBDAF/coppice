@@ -2,9 +2,10 @@
 
 **Project:** api-service  
 **Language:** Go  
-**Status:** ✅ Base implementation complete, enhancements pending  
-**Session Focus:** Add document upload capability and MinIO integration  
-**Last Updated:** January 2026
+**Status:** ✅ Implemented and verified (build/vet/test green); document upload from this
+plan has been merged into the codebase. The phases below are kept as a record of how it
+was built; treat code + README.md + CONTRACTS.md as authoritative over this doc.
+**Last Updated:** 2026-07-07 (refactor pass: deps modernized, contract fixes, tests added)
 
 ---
 
@@ -12,19 +13,24 @@
 
 ### 1.1 Completed Features
 - ✅ Profile CRUD API with PostgreSQL
-- ✅ Redis cache-aside pattern
-- ✅ RabbitMQ task publishing (email, image, profile)
+- ✅ Redis cache-aside pattern (including list-page invalidation on writes)
+- ✅ RabbitMQ task publishing (email, image, profile, document)
 - ✅ Auth middleware with circuit breaker to auth-service
-- ✅ Health checks and Prometheus metrics
+- ✅ Health/readiness checks and Prometheus metrics (dedicated port 8081)
 - ✅ Logging with Zap
 - ✅ Graceful shutdown
+- ✅ Document upload endpoint (`POST /api/v1/documents/upload`)
+- ✅ MinIO client integration (bucket auto-created at startup)
+- ✅ Document metadata storage in PostgreSQL
+- ✅ `document.process` routing key for GraphRAG
+- ✅ Document retrieval and status endpoints
 
-### 1.2 Missing Features (This Plan)
-- ❌ Document upload endpoint (`POST /api/v1/documents/upload`)
-- ❌ MinIO client integration
-- ❌ Document metadata storage in PostgreSQL
-- ❌ `document.process` routing key for GraphRAG
-- ❌ Document retrieval and status endpoints
+### 1.2 Known cross-service discrepancy (not fixed here, see README/final report)
+- ⚠️ `profile.task` publishes to exchange `tasks-exchange` (TTL 24h), matching
+  `graph-worker/operational-workers/cmd/profile-worker` as actually implemented,
+  NOT `profile-tasks` (TTL 1h) as CONTRACTS.md / ROUTING_KEYS.md state. Changing
+  api-service alone would break delivery to profile-worker; needs an orchestrator-level
+  decision (rename both sides, or update the docs to match reality).
 
 ---
 

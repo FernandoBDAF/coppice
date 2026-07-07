@@ -31,4 +31,3 @@ func NewClient(cfg config.PostgresConfig) (*sqlx.DB, error) {
 
 	return db, nil
 }
-

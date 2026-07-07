@@ -14,14 +14,15 @@ import (
 
 // Client manages a RabbitMQ connection and channel
 type Client struct {
-	conn           *amqp.Connection
-	channel        *amqp.Channel
-	config         config.RabbitMQConfig
-	confirms       chan amqp.Confirmation
-	confirmTracker map[uint64]chan bool
-	trackerMu      sync.RWMutex
-	connected      bool
-	mu             sync.RWMutex
+	conn             *amqp.Connection
+	channel          *amqp.Channel
+	config           config.RabbitMQConfig
+	confirms         chan amqp.Confirmation
+	confirmTracker   map[uint64]chan bool
+	trackerMu        sync.RWMutex
+	connected        bool
+	mu               sync.RWMutex
+	declaredTopology sync.Map // routingKey -> struct{}, reset on every (re)connect
 }
 
 func NewClient(cfg config.RabbitMQConfig) (*Client, error) {
@@ -118,7 +119,15 @@ func (c *Client) monitorConnection() {
 	}
 }
 
+// ensureTopology declares the exchange/queue/DLQ for routingKey. Declarations
+// are idempotent on the broker, but re-issuing five AMQP calls on every single
+// publish adds needless round-trip latency, so successful declarations are
+// cached in-process and skipped on subsequent publishes for the same key.
 func (c *Client) ensureTopology(routingKey string) error {
+	if _, ok := c.declaredTopology.Load(routingKey); ok {
+		return nil
+	}
+
 	config, exists := task.DefaultRoutingMap[routingKey]
 	if !exists {
 		config = task.RoutingConfig{
@@ -214,6 +223,7 @@ func (c *Client) ensureTopology(routingKey string) error {
 		return fmt.Errorf("failed to bind dead letter queue %s: %w", dlqName, err)
 	}
 
+	c.declaredTopology.Store(routingKey, struct{}{})
 	return nil
 }
 
@@ -286,9 +296,12 @@ func (c *Client) Close() error {
 	defer c.mu.Unlock()
 
 	c.connected = false
-	if c.confirms != nil {
-		close(c.confirms)
-	}
+
+	// Do NOT manually close(c.confirms) here: amqp091-go already closes every
+	// channel registered via NotifyPublish (which includes c.confirms) as part
+	// of Channel.shutdown(), triggered below by channel.Close()/conn.Close().
+	// Closing it ourselves first would race the library and cause a
+	// "close of closed channel" panic during shutdown.
 	if c.channel != nil {
 		_ = c.channel.Close()
 	}
@@ -303,4 +316,3 @@ func (c *Client) IsConnected() bool {
 	defer c.mu.RUnlock()
 	return c.connected
 }
-

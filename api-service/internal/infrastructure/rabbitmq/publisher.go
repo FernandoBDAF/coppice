@@ -50,4 +50,3 @@ func (p *Publisher) PublishWithRoutingKey(routingKey string, msg *task.Message) 
 		"application/json",
 	)
 }
-

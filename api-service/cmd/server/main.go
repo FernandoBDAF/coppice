@@ -20,8 +20,8 @@ import (
 	"github.com/fernandobarroso/microservices/api-service/internal/infrastructure/auth"
 	minioInfra "github.com/fernandobarroso/microservices/api-service/internal/infrastructure/minio"
 	"github.com/fernandobarroso/microservices/api-service/internal/infrastructure/postgres"
-	redisInfra "github.com/fernandobarroso/microservices/api-service/internal/infrastructure/redis"
 	"github.com/fernandobarroso/microservices/api-service/internal/infrastructure/rabbitmq"
+	redisInfra "github.com/fernandobarroso/microservices/api-service/internal/infrastructure/redis"
 	"github.com/fernandobarroso/microservices/api-service/internal/pkg/logger"
 )
 
@@ -115,9 +115,23 @@ func main() {
 		}
 	}()
 
+	// Prometheus metrics are served on their own port per the platform
+	// contract, independent from the public API port above.
+	var metricsServer *http.Server
+	if cfg.Metrics.Enabled {
+		metricsServer = api.NewMetricsServer(cfg)
+		go func() {
+			log.Info("Metrics server started", zap.Int("port", cfg.Metrics.Port))
+			if err := metricsServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				log.Error("metrics server error", zap.Error(err))
+			}
+		}()
+	}
+
 	shutdown := make(chan os.Signal, 1)
 	signal.Notify(shutdown, syscall.SIGINT, syscall.SIGTERM)
 	<-shutdown
+	log.Info("shutdown signal received, draining")
 
 	ctx, cancel := context.WithTimeout(context.Background(), cfg.Server.ShutdownTimeout)
 	defer cancel()
@@ -125,8 +139,12 @@ func main() {
 	if err := server.Shutdown(ctx); err != nil {
 		log.Error("failed to shutdown server", zap.Error(err))
 	}
+	if metricsServer != nil {
+		if err := metricsServer.Shutdown(ctx); err != nil {
+			log.Error("failed to shutdown metrics server", zap.Error(err))
+		}
+	}
 
 	log.Info("server shutdown complete")
 	time.Sleep(100 * time.Millisecond)
 }
-

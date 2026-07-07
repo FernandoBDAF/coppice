@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/go-redis/redis/v8"
+	"github.com/redis/go-redis/v9"
 
 	"github.com/fernandobarroso/microservices/api-service/internal/config"
 )
@@ -70,6 +70,27 @@ func (c *Client) Delete(ctx context.Context, keys ...string) error {
 	return nil
 }
 
+// DeleteByPattern removes all keys matching a glob pattern (e.g. "profiles:list:*").
+// It uses SCAN rather than KEYS so it never blocks the Redis event loop.
+func (c *Client) DeleteByPattern(ctx context.Context, pattern string) error {
+	var (
+		cursor uint64
+		keys   []string
+	)
+	for {
+		batch, next, err := c.client.Scan(ctx, cursor, pattern, 100).Result()
+		if err != nil {
+			return fmt.Errorf("redis scan failed: %w", err)
+		}
+		keys = append(keys, batch...)
+		cursor = next
+		if cursor == 0 {
+			break
+		}
+	}
+	return c.Delete(ctx, keys...)
+}
+
 func (c *Client) Ping(ctx context.Context) error {
 	return c.client.Ping(ctx).Err()
 }
@@ -79,7 +100,6 @@ func (c *Client) Close() error {
 }
 
 var (
-	ErrCacheMiss    = fmt.Errorf("cache miss")
+	ErrCacheMiss     = fmt.Errorf("cache miss")
 	ErrRedisDisabled = fmt.Errorf("redis is disabled")
 )
-

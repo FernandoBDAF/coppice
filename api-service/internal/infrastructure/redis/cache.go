@@ -14,14 +14,14 @@ import (
 
 // Cache provides profile-specific caching operations
 type Cache struct {
-	client    *Client
+	client     *Client
 	profileTTL time.Duration
 	listTTL    time.Duration
 }
 
 func NewCache(client *Client, cfg config.CacheConfig) *Cache {
 	return &Cache{
-		client:    client,
+		client:     client,
 		profileTTL: cfg.ProfileTTL,
 		listTTL:    cfg.ListTTL,
 	}
@@ -76,3 +76,8 @@ func (c *Cache) SetProfileList(ctx context.Context, page int, profiles []*profil
 	return c.client.Set(ctx, key, data, c.listTTL)
 }
 
+// InvalidateProfileLists drops every cached list page. Called whenever a
+// profile is created, updated, or deleted so stale pages can't be served.
+func (c *Cache) InvalidateProfileLists(ctx context.Context) error {
+	return c.client.DeleteByPattern(ctx, "profiles:list:*")
+}

@@ -27,11 +27,25 @@ func (s *Service) Submit(ctx context.Context, routingKey, msgType string, payloa
 		return "", fmt.Errorf("failed to marshal payload: %w", err)
 	}
 
+	correlationID := uuid.New().String()
+
+	// Every published message carries metadata.source="api-service" and a
+	// trace_id, per the pinned envelope shape. Callers may supply their own
+	// trace_id (e.g. propagated from an inbound request); otherwise fall back
+	// to this publish's correlation ID so messages stay traceable end to end.
+	if metadata == nil {
+		metadata = map[string]string{}
+	}
+	metadata["source"] = "api-service"
+	if _, ok := metadata["trace_id"]; !ok {
+		metadata["trace_id"] = correlationID
+	}
+
 	msg := &Message{
 		ID:            uuid.New().String(),
 		Type:          msgType,
 		Timestamp:     time.Now().UTC(),
-		CorrelationID: uuid.New().String(),
+		CorrelationID: correlationID,
 		Payload:       body,
 		Metadata:      metadata,
 		Priority:      0,
@@ -43,4 +57,3 @@ func (s *Service) Submit(ctx context.Context, routingKey, msgType string, payloa
 
 	return msg.ID, nil
 }
-

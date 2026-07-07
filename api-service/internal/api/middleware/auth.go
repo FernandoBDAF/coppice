@@ -4,7 +4,6 @@ import (
 	"context"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -30,7 +29,7 @@ func AuthMiddleware(authClient *auth.Client, logger *zap.Logger) gin.HandlerFunc
 		}
 
 		token := parts[1]
-		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(c.Request.Context(), authClient.Timeout())
 		defer cancel()
 
 		resp, err := authClient.ValidateToken(ctx, token)
@@ -54,4 +53,3 @@ func AuthMiddleware(authClient *auth.Client, logger *zap.Logger) gin.HandlerFunc
 		c.Next()
 	}
 }
-

@@ -118,4 +118,3 @@ func (h *ProfileHandler) DeleteProfile(c *gin.Context) {
 
 	c.Status(http.StatusNoContent)
 }
-

@@ -44,4 +44,3 @@ func String(key, value string) zap.Field {
 func ErrorField(err error) zap.Field {
 	return zap.Error(err)
 }
-

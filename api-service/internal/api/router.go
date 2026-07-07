@@ -4,7 +4,6 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.uber.org/zap"
 
 	"github.com/fernandobarroso/microservices/api-service/internal/api/handlers"
@@ -34,12 +33,12 @@ func NewRouter(
 	engine.Use(middleware.LoggingMiddleware(logger))
 	engine.Use(middleware.MetricsMiddleware())
 
-	// Health and metrics
+	// Liveness/readiness stay on the main API port. Prometheus metrics are
+	// served on their own port (cfg.Metrics.Port) via NewMetricsServer - see
+	// metrics_server.go - to match the platform contract's dedicated metrics
+	// port instead of sharing the public API surface.
 	engine.GET("/health", healthHandler.Liveness)
 	engine.GET("/ready", healthHandler.Readiness)
-	if cfg.Metrics.Enabled {
-		engine.GET(cfg.Metrics.Path, gin.WrapH(promhttp.Handler()))
-	}
 
 	v1 := engine.Group("/api/v1")
 	v1.Use(middleware.AuthMiddleware(authClient, logger))
@@ -87,4 +86,3 @@ func (r *Router) Run(addr string) error {
 func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	r.engine.ServeHTTP(w, req)
 }
-

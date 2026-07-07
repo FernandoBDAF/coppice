@@ -7,4 +7,3 @@ var (
 	ErrBadRequest = errors.New("bad request")
 	ErrConflict   = errors.New("conflict")
 )
-

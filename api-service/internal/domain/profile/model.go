@@ -153,4 +153,3 @@ func validateContactRequest(contact *ContactRequest) error {
 	}
 	return nil
 }
-

@@ -75,4 +75,3 @@ func statusText(status int) string {
 	}
 	return "degraded"
 }
-

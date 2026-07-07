@@ -13,6 +13,7 @@ type Cache interface {
 	InvalidateProfile(ctx context.Context, id uuid.UUID) error
 	GetProfileList(ctx context.Context, page int) ([]*Profile, error)
 	SetProfileList(ctx context.Context, page int, profiles []*Profile) error
+	InvalidateProfileLists(ctx context.Context) error
 }
 
 type Service struct {
@@ -64,6 +65,7 @@ func (s *Service) Create(ctx context.Context, req *ProfileRequest) (*Profile, er
 
 	if s.cache != nil {
 		_ = s.cache.SetProfile(ctx, p)
+		_ = s.cache.InvalidateProfileLists(ctx)
 	}
 
 	return p, nil
@@ -150,6 +152,7 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req *ProfileRequest)
 
 	if s.cache != nil {
 		_ = s.cache.SetProfile(ctx, p)
+		_ = s.cache.InvalidateProfileLists(ctx)
 	}
 
 	return p, nil
@@ -161,7 +164,7 @@ func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
 	}
 	if s.cache != nil {
 		_ = s.cache.InvalidateProfile(ctx, id)
+		_ = s.cache.InvalidateProfileLists(ctx)
 	}
 	return nil
 }
-

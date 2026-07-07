@@ -48,4 +48,3 @@ func MetricsMiddleware() gin.HandlerFunc {
 		requestDuration.WithLabelValues(c.Request.Method, path, status).Observe(elapsed)
 	}
 }
-

@@ -30,11 +30,11 @@ var AllowedFileTypes = map[string]bool{
 }
 
 var AllowedMimeTypes = map[string]bool{
-	"application/pdf":                                                         true,
-	"text/plain":                                                               true,
-	"text/markdown":                                                            true,
+	"application/pdf": true,
+	"text/plain":      true,
+	"text/markdown":   true,
 	"application/vnd.openxmlformats-officedocument.wordprocessingml.document": true,
-	"application/msword":                                                       true,
+	"application/msword": true,
 }
 
 type JSONMap map[string]interface{}

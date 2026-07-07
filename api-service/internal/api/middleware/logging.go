@@ -27,4 +27,3 @@ func LoggingMiddleware(logger *zap.Logger) gin.HandlerFunc {
 		)
 	}
 }
-

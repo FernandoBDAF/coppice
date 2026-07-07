@@ -84,4 +84,3 @@ var DefaultRoutingMap = map[string]RoutingConfig{
 		Description:   "Document processing tasks for GraphRAG",
 	},
 }
-

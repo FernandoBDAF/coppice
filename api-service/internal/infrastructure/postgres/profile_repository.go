@@ -363,5 +363,3 @@ func getCorrelationID(ctx context.Context) string {
 
 // ErrNotFound is returned when a profile is not found.
 var ErrNotFound = errors.New("profile not found")
-
-

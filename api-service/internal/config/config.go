@@ -117,6 +117,7 @@ func Load() (*Config, error) {
 	viper.BindEnv("redis.password", "API_REDIS_PASSWORD")
 	viper.BindEnv("redis.host", "API_REDIS_HOST")
 	viper.BindEnv("redis.port", "API_REDIS_PORT")
+	viper.BindEnv("rabbitmq.hosts", "API_RABBITMQ_HOSTS")
 	viper.BindEnv("rabbitmq.password", "API_RABBITMQ_PASSWORD")
 	viper.BindEnv("auth.url", "API_AUTH_URL")
 	viper.BindEnv("minio.endpoint", "MINIO_ENDPOINT")
@@ -150,7 +151,7 @@ func setDefaults() {
 	viper.SetDefault("server.write_timeout", "30s")
 	viper.SetDefault("server.shutdown_timeout", "10s")
 
-	viper.SetDefault("postgres.dsn", "postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable")
+	viper.SetDefault("postgres.dsn", "postgres://postgres:postgres@localhost:5432/api_db?sslmode=disable")
 	viper.SetDefault("postgres.max_open_conns", 50)
 	viper.SetDefault("postgres.max_idle_conns", 10)
 	viper.SetDefault("postgres.conn_max_lifetime", "5m")
@@ -236,4 +237,3 @@ func (c *Config) Validate() error {
 func (r *RedisConfig) Addr() string {
 	return fmt.Sprintf("%s:%d", r.Host, r.Port)
 }
-
