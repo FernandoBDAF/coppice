@@ -22,6 +22,12 @@ router.get(
     HealthController.live(req, res);
   })
 );
+router.get(
+  "/metrics",
+  asyncHandler(async (req, res) => {
+    await HealthController.metrics(req, res);
+  })
+);
 
 export default router;
 

@@ -2,6 +2,7 @@ import { createApp } from "./app.js";
 import { config } from "./config/index.js";
 import { migrationService } from "./infrastructure/database/migrations.js";
 import { logger } from "./infrastructure/logging/logger.js";
+import { db } from "./infrastructure/database/connection.js";
 
 const app = createApp();
 
@@ -20,19 +21,40 @@ async function startServer() {
       );
     });
 
-    const gracefulShutdown = (signal: string) => {
-      logger.info({ signal }, "Shutting down gracefully");
-      server.close(() => {
-        logger.info("HTTP server closed");
-        process.exit(0);
-      });
+    let isShuttingDown = false;
 
-      setTimeout(() => {
+    const gracefulShutdown = (signal: string) => {
+      if (isShuttingDown) {
+        return;
+      }
+      isShuttingDown = true;
+
+      logger.info({ signal }, "Shutting down gracefully");
+
+      const forceExitTimer = setTimeout(() => {
         logger.error(
           "Could not close connections in time, forcefully shutting down"
         );
         process.exit(1);
       }, 10000);
+
+      server.close((err) => {
+        if (err) {
+          logger.error({ err }, "Error closing HTTP server");
+        } else {
+          logger.info("HTTP server closed");
+        }
+
+        void db
+          .close()
+          .catch((dbErr: unknown) => {
+            logger.error({ err: dbErr }, "Error closing database pool");
+          })
+          .finally(() => {
+            clearTimeout(forceExitTimer);
+            process.exit(err ? 1 : 0);
+          });
+      });
     };
 
     process.on("SIGTERM", () => {

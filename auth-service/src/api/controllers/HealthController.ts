@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 import { db } from "../../infrastructure/database/connection.js";
 import { config } from "../../config/index.js";
+import { register } from "../../infrastructure/metrics/metrics.js";
 
 // eslint-disable-next-line @typescript-eslint/no-extraneous-class
 export class HealthController {
@@ -53,6 +54,20 @@ export class HealthController {
       uptime: process.uptime(),
       memory: process.memoryUsage(),
     });
+  }
+
+  static async metrics(_req: Request, res: Response): Promise<void> {
+    if (!config.metrics.enabled) {
+      res.status(404).json({
+        status: "error",
+        message: "Metrics are disabled",
+        code: "METRICS_DISABLED",
+      });
+      return;
+    }
+
+    res.setHeader("Content-Type", register.contentType);
+    res.send(await register.metrics());
   }
 }
 

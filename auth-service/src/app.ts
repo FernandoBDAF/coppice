@@ -5,6 +5,7 @@ import { registerRoutes } from "./api/routes/index.js";
 import { errorHandler, notFoundHandler } from "./api/middleware/error.middleware.js";
 import { globalRateLimit } from "./api/middleware/rateLimit.middleware.js";
 import { requestIdMiddleware } from "./api/middleware/requestId.middleware.js";
+import { metricsMiddleware } from "./api/middleware/metrics.middleware.js";
 import swaggerUi from "swagger-ui-express";
 import { generateOpenApiDocument } from "./api/docs/openapi.js";
 import "./api/docs/index.js";
@@ -21,6 +22,7 @@ export const createApp = () => {
 
   app.use(globalRateLimit);
   app.use(requestIdMiddleware);
+  app.use(metricsMiddleware);
 
   app.use(express.json({ limit: "1mb" }));
   app.use(express.urlencoded({ extended: true }));

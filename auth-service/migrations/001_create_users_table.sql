@@ -36,12 +36,27 @@ CREATE INDEX IF NOT EXISTS idx_users_is_active ON users(is_active);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_user_id ON auth_audit_logs(user_id);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON auth_audit_logs(created_at);
 
--- Add foreign key constraint after indexes are created
-ALTER TABLE auth_audit_logs ADD CONSTRAINT fk_audit_user_id 
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL;
+-- Add foreign key constraint after indexes are created (idempotent: Postgres has
+-- no "ADD CONSTRAINT IF NOT EXISTS", so guard with a DO block instead)
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'fk_audit_user_id'
+    ) THEN
+        ALTER TABLE auth_audit_logs ADD CONSTRAINT fk_audit_user_id
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL;
+    END IF;
+END $$;
 
--- Add essential constraints only
-ALTER TABLE users ADD CONSTRAINT chk_users_role CHECK (role IN ('user', 'admin'));
+-- Add essential constraints only (idempotent, see above)
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'chk_users_role'
+    ) THEN
+        ALTER TABLE users ADD CONSTRAINT chk_users_role CHECK (role IN ('user', 'admin'));
+    END IF;
+END $$;
 
 -- Add comments for documentation
 COMMENT ON TABLE users IS 'User accounts with authentication information';

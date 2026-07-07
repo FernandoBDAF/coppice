@@ -50,5 +50,40 @@ describe("Auth Routes", () => {
     expect(status).toBe(200);
     expect(body.status).toBe("healthy");
   });
+
+  it("returns ready status when the database is reachable", async () => {
+    const response = await request(app).get("/ready");
+    const { status, body } = response as {
+      status: number;
+      body: { status: string };
+    };
+    expect(status).toBe(200);
+    expect(body.status).toBe("ready");
+  });
+
+  it("exposes Prometheus metrics", async () => {
+    const response = await request(app).get("/metrics");
+    const { status, headers, text } = response as {
+      status: number;
+      headers: Record<string, string>;
+      text: string;
+    };
+    expect(status).toBe(200);
+    expect(headers["content-type"]).toContain("text/plain");
+    expect(text).toContain("auth_service_");
+  });
+
+  it("returns 401 with the frozen contract shape for an invalid token", async () => {
+    const response = await request(app)
+      .post("/v1/auth/token/validate")
+      .send({ token: "not-a-real-jwt" });
+    const { status, body } = response as {
+      status: number;
+      body: { status: string; message: string; data: { valid: boolean } };
+    };
+    expect(status).toBe(401);
+    expect(body.status).toBe("error");
+    expect(body.data.valid).toBe(false);
+  });
 });
 

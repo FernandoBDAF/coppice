@@ -1,15 +1,28 @@
 import { z } from "zod";
 
+// `z.coerce.boolean()` runs the JS `Boolean()` constructor under the hood, so any
+// non-empty string -- including the literal "false" -- coerces to `true`. Env vars are
+// always strings, so that footgun would make `SOME_FLAG=false` silently mean "true".
+// Parse the textual value explicitly instead.
+const booleanEnv = (defaultValue: boolean) =>
+  z
+    .string()
+    .optional()
+    .transform((val) => {
+      if (val === undefined) return defaultValue;
+      return val.toLowerCase() === "true" || val === "1";
+    });
+
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
-  PORT: z.coerce.number().default(8080),
-  DATABASE_HOST: z.string().default("postgres-auth"),
+  PORT: z.coerce.number().default(3000),
+  DATABASE_HOST: z.string().default("postgres"),
   DATABASE_PORT: z.coerce.number().default(5432),
   DATABASE_NAME: z.string().default("auth_db"),
   DATABASE_USER: z.string().default("auth_user"),
   DATABASE_PASSWORD: z.string().min(1),
   DATABASE_POOL_MAX: z.coerce.number().default(20),
-  DATABASE_SSL: z.coerce.boolean().default(false),
+  DATABASE_SSL: booleanEnv(false),
   JWT_SECRET: z.string().min(32),
   JWT_ACCESS_TOKEN_EXPIRY: z.string().default("15m"),
   JWT_REFRESH_TOKEN_EXPIRY: z.string().default("7d"),
@@ -22,12 +35,12 @@ const envSchema = z.object({
     .url()
     .optional()
     .default("http://api-service:8080"),
-  METRICS_ENABLED: z.coerce.boolean().default(true),
+  METRICS_ENABLED: booleanEnv(true),
   METRICS_PREFIX: z.string().default("auth_service_"),
   LOG_LEVEL: z
-    .enum(["fatal", "error", "warn", "info", "debug", "trace"])
+    .enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"])
     .default("info"),
-  LOG_PRETTY: z.coerce.boolean().default(false),
+  LOG_PRETTY: booleanEnv(false),
 });
 
 export type Env = z.infer<typeof envSchema>;
