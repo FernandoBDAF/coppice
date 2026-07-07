@@ -1,6 +1,7 @@
 # Documentation
 
-Active documentation for the Profile Service API.
+Active documentation for the microservices platform. Cross-service contracts
+live at the repo root in [CONTRACTS.md](../CONTRACTS.md).
 
 ## Structure
 
@@ -11,6 +12,7 @@ documentation/
 │   ├── best-practices/     Coding standards and patterns
 │   └── tools/              Tool-specific documentation
 ├── performance/            Performance optimization and testing
+├── planning/               Historical planning documents (pre-refactor)
 ├── templates/              Documentation templates
 │   ├── api/                API documentation templates
 │   ├── architecture/       Architecture templates
@@ -57,6 +59,17 @@ documentation/
 ### API
 - [API Overview](api/README.md)
 
+### Planning (historical)
+- [Master Implementation Plan](planning/MASTER_IMPLEMENTATION_PLAN.md)
+- [Consolidated Service Plan](planning/CONSOLIDATED_SERVICE_PLAN.md)
+- [GraphRAG & Concurrency Plan](planning/GRAPHRAG_AND_CONCURRENCY_PLAN.md)
+- [Auth Service & Deployment Plan](planning/PLAN_AUTH_SERVICE_AND_DEPLOYMENT.md)
+- [Graph Worker Brainstorm](planning/BRAINSTORM_GRAPH_WORKER_ARCHITECTURE.md)
+- [2026-01 Refactor Verification](planning/REFACTOR_VERIFICATION_REPORT.md)
+
+> These predate the 2026-07 refactor; where they disagree with the code,
+> root README, or CONTRACTS.md, the latter win.
+
 ### Templates
 - [Templates Overview](templates/README.md)
 - [LLM-Friendly Template](templates/LLM_FRIENDLY_TEMPLATE.md)
@@ -100,4 +113,4 @@ See [LEGACY_CONTENT_MIGRATION_STUDY.md](../legacy_project/reference-materials/LE
 
 ---
 
-**Last Updated:** January 2026
+**Last Updated:** July 2026
