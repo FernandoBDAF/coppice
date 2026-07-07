@@ -1,3 +1,15 @@
+"""Manual smoke tool: publishes one test message per worker queue.
+
+Payload shapes follow graph-worker/shared/contracts/MESSAGE_FORMAT.md
+exactly. Run the workers first (they declare the exchanges/queues/DLQs on
+startup) so these publishes land somewhere and actually get consumed;
+otherwise a direct exchange with no bound queue silently drops the message.
+
+Usage:
+    pip install aio-pika
+    RABBITMQ_HOST=localhost python tests/publish_test_messages.py
+"""
+
 import asyncio
 import json
 import os
@@ -41,42 +53,41 @@ async def main() -> None:
         image_exchange = await channel.declare_exchange(
             "image-tasks", aio_pika.ExchangeType.DIRECT, durable=True
         )
+        # NOTE: profile.task is published (by api-service) to "tasks-exchange",
+        # NOT "profile-tasks" as an earlier draft of the contract docs implied.
+        # See api-service/internal/domain/task/model.go DefaultRoutingMap and
+        # cmd/profile-worker/main.go for the full explanation. This script
+        # targets the exchange the profile-worker actually binds to.
         profile_exchange = await channel.declare_exchange(
-            "profile-tasks", aio_pika.ExchangeType.DIRECT, durable=True
+            "tasks-exchange", aio_pika.ExchangeType.DIRECT, durable=True
         )
 
+        # graph-worker/shared/contracts/MESSAGE_FORMAT.md "Email Payload"
         email_payload = {
-            "type": "email",
-            "payload": {
-                "recipient": "user@example.com",
-                "email_type": "welcome",
-                "template": "welcome",
-                "data": {"first_name": "Ada"},
-                "priority": "normal",
-            },
-            "created_at": datetime.now(tz=timezone.utc).isoformat(),
+            "email_type": "welcome",
+            "recipient": "user@example.com",
+            "subject": "Welcome",
+            "template_id": "welcome-template",
+            "variables": {"first_name": "Ada"},
         }
+
+        # graph-worker/shared/contracts/MESSAGE_FORMAT.md "Image Payload"
         image_payload = {
-            "type": "image",
-            "payload": {
-                "image_url": "https://example.com/image.png",
-                "processing_type": "resize",
-                "parameters": {"width": 256, "height": 256},
-                "callback_url": "",
-                "timeout_seconds": 60,
-                "priority": "normal",
-            },
-            "created_at": datetime.now(tz=timezone.utc).isoformat(),
+            "operation": "resize",
+            "source_url": "s3://bucket/path/image.png",
+            "target_path": "processed/image.png",
+            "width": 512,
+            "height": 512,
+            "quality": 85,
+            "format": "png",
         }
+
+        # graph-worker/shared/contracts/MESSAGE_FORMAT.md "Profile Payload"
         profile_payload = {
-            "type": "profile",
-            "payload": {
-                "task_type": "sync",
-                "profile_id": "profile-789",
-                "user_id": "user-456",
-                "data": {"source": "test"},
-            },
-            "created_at": datetime.now(tz=timezone.utc).isoformat(),
+            "task_type": "sync",
+            "profile_id": "profile-789",
+            "user_id": "user-456",
+            "data": {"source": "external-system"},
         }
 
         await email_exchange.publish(

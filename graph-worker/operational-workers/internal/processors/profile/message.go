@@ -1,6 +1,7 @@
 package profile
 
 import (
+	"encoding/json"
 	"errors"
 	"time"
 
@@ -8,11 +9,14 @@ import (
 )
 
 var (
-	ErrInvalidTaskType  = errors.New("invalid task type")
-	ErrInvalidProfileID = errors.New("invalid profile id")
+	ErrInvalidProfileID = errors.New("invalid profile_id")
+	ErrInvalidTaskType  = errors.New("invalid task_type")
+	ErrInvalidEnvelope  = errors.New("envelope type must be 'profile.task'")
 )
 
-// TaskType represents the type of profile task to process
+// TaskType is advisory only: MESSAGE_FORMAT.md does not close this to an
+// enum, so unrecognized values are handled generically rather than
+// rejected (forward compatibility).
 type TaskType string
 
 const (
@@ -21,48 +25,56 @@ const (
 	TaskTypeEnrich   TaskType = "enrich"
 )
 
-// ProfilePayload contains profile task data
+// ProfilePayload mirrors graph-worker/shared/contracts/MESSAGE_FORMAT.md
+// "Profile Payload" exactly.
 type ProfilePayload struct {
-	TaskType  TaskType          `json:"task_type"`
-	ProfileID string            `json:"profile_id"`
-	UserID    string            `json:"user_id,omitempty"`
-	Data      map[string]string `json:"data,omitempty"`
+	TaskType  string                 `json:"task_type"`
+	ProfileID string                 `json:"profile_id"`
+	UserID    string                 `json:"user_id,omitempty"`
+	Data      map[string]interface{} `json:"data,omitempty"`
 }
 
-// ProfileMessage represents a profile task message
+// ProfileMessage is the parsed envelope + typed payload for a profile.task task.
 type ProfileMessage struct {
-	Type      string         `json:"type"`
-	Payload   ProfilePayload `json:"payload"`
-	CreatedAt time.Time      `json:"created_at"`
-
-	queue.Message
+	ID        string
+	Type      string
+	Timestamp time.Time
+	Payload   ProfilePayload
+	Metadata  map[string]string
 }
 
-// NewProfileMessage creates a profile message from queue message
+// NewProfileMessage decodes msg.Payload (the envelope's "payload" object)
+// into ProfilePayload.
 func NewProfileMessage(msg *queue.Message) (*ProfileMessage, error) {
-	var profileMsg ProfileMessage
-	if err := msg.UnmarshalPayload(&profileMsg); err != nil {
+	var payload ProfilePayload
+	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
 		return nil, err
 	}
 
-	profileMsg.Message = *msg
-	return &profileMsg, nil
+	return &ProfileMessage{
+		ID:        msg.ID,
+		Type:      msg.Type,
+		Timestamp: msg.Timestamp,
+		Payload:   payload,
+		Metadata:  msg.Metadata,
+	}, nil
 }
 
-// Validate validates the profile message
+// Validate checks the envelope + required payload fields. Unknown
+// task_type values are tolerated (see TaskType doc); only structurally
+// required fields are enforced.
 func (m *ProfileMessage) Validate() error {
-	if m.Type != "profile" {
-		return errors.New("message type must be 'profile'")
+	if m.Type != "" && m.Type != "profile.task" {
+		return ErrInvalidEnvelope
 	}
 
 	if m.Payload.ProfileID == "" {
 		return ErrInvalidProfileID
 	}
 
-	switch m.Payload.TaskType {
-	case TaskTypeSync, TaskTypeValidate, TaskTypeEnrich:
-		return nil
-	default:
+	if m.Payload.TaskType == "" {
 		return ErrInvalidTaskType
 	}
+
+	return nil
 }

@@ -3,18 +3,30 @@ package queue
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"sync"
 	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 	"go.uber.org/zap"
 )
 
+// Consumer connects to RabbitMQ, declares its topology idempotently, and
+// consumes a single queue with automatic reconnect on connection/channel
+// loss. Poison messages (unparseable or handler-rejected) are nack'd
+// without requeue so they land on the dead-letter queue instead of being
+// redelivered forever.
 type Consumer struct {
+	config *Config
+	logger *Logger
+
+	mu      sync.Mutex
 	conn    *amqp.Connection
 	channel *amqp.Channel
-	config  *Config
-	logger  *Logger
-	done    chan struct{}
+
+	done      chan struct{}
+	closeOnce sync.Once
+	wg        sync.WaitGroup
 }
 
 func NewConsumer(config *Config) (*Consumer, error) {
@@ -23,172 +35,323 @@ func NewConsumer(config *Config) (*Consumer, error) {
 		return nil, err
 	}
 
-	c := &Consumer{
+	return &Consumer{
 		config: config,
 		logger: logger,
 		done:   make(chan struct{}),
-	}
-
-	if err := c.connect(); err != nil {
-		return nil, err
-	}
-
-	return c, nil
+	}, nil
 }
 
+// connect (re)establishes the connection/channel as needed and declares
+// the full topology idempotently: main exchange, dead-letter exchange,
+// main queue (with DLX args), dead-letter queue, and both bindings. All
+// declarations must match the publisher's args exactly (see Config docs).
 func (c *Consumer) connect() error {
-	var err error
-	c.conn, err = amqp.DialConfig(c.config.URL, amqp.Config{
-		Heartbeat: c.config.Heartbeat,
-		Locale:    c.config.Locale,
-	})
-	if err != nil {
-		return ErrConnectionFailed
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.conn == nil || c.conn.IsClosed() {
+		conn, err := amqp.DialConfig(c.config.URL, amqp.Config{
+			Heartbeat: c.config.Heartbeat,
+			Locale:    c.config.Locale,
+		})
+		if err != nil {
+			return fmt.Errorf("%w: %v", ErrConnectionFailed, err)
+		}
+		c.conn = conn
 	}
 
-	c.channel, err = c.conn.Channel()
+	ch, err := c.conn.Channel()
 	if err != nil {
-		return ErrChannelFailed
+		return fmt.Errorf("%w: %v", ErrChannelFailed, err)
 	}
 
-	// Declare exchange
-	err = c.channel.ExchangeDeclare(
+	dlxName := c.config.Exchange + ".dlx"
+	dlqName := c.config.Queue + ".dlq"
+
+	// Main exchange (direct, durable) — matches the publisher's declaration.
+	if err := ch.ExchangeDeclare(
 		c.config.Exchange,
-		"direct", // type
+		"direct",
 		c.config.Durable,
 		c.config.AutoDelete,
 		false, // internal
 		c.config.NoWait,
-		nil, // arguments
-	)
-	if err != nil {
-		return err
+		nil,
+	); err != nil {
+		_ = ch.Close()
+		return fmt.Errorf("declare exchange %s: %w", c.config.Exchange, err)
 	}
 
-	// Declare queue
-	_, err = c.channel.QueueDeclare(
+	// Dead-letter exchange.
+	if err := ch.ExchangeDeclare(
+		dlxName,
+		"direct",
+		c.config.Durable,
+		c.config.AutoDelete,
+		false,
+		c.config.NoWait,
+		nil,
+	); err != nil {
+		_ = ch.Close()
+		return fmt.Errorf("declare dlx %s: %w", dlxName, err)
+	}
+
+	// Main queue: args must be byte-for-byte equivalent to the publisher's
+	// ensureTopology() or RabbitMQ rejects the redeclare.
+	queueArgs := amqp.Table{
+		"x-dead-letter-exchange":    dlxName,
+		"x-dead-letter-routing-key": c.config.RoutingKey,
+		"x-message-ttl":             int32(c.config.MessageTTL.Milliseconds()),
+		"x-max-retries":             c.config.MaxRetries,
+	}
+	if _, err := ch.QueueDeclare(
 		c.config.Queue,
 		c.config.Durable,
 		c.config.AutoDelete,
 		c.config.Exclusive,
 		c.config.NoWait,
-		nil, // arguments
-	)
-	if err != nil {
-		return err
+		queueArgs,
+	); err != nil {
+		_ = ch.Close()
+		return fmt.Errorf("declare queue %s: %w", c.config.Queue, err)
 	}
 
-	// Bind queue to exchange
-	err = c.channel.QueueBind(
+	if err := ch.QueueBind(
 		c.config.Queue,
 		c.config.RoutingKey,
 		c.config.Exchange,
 		c.config.NoWait,
 		nil,
-	)
-	if err != nil {
-		return err
+	); err != nil {
+		_ = ch.Close()
+		return fmt.Errorf("bind queue %s: %w", c.config.Queue, err)
 	}
 
-	// Set QoS
-	err = c.channel.Qos(
-		c.config.PrefetchCount,
-		c.config.PrefetchSize,
-		c.config.Global,
-	)
-	if err != nil {
-		return err
+	// Dead-letter queue.
+	dlqArgs := amqp.Table{
+		"x-message-ttl": int32(c.config.DeadLetterTTL.Milliseconds()),
+	}
+	if _, err := ch.QueueDeclare(
+		dlqName,
+		c.config.Durable,
+		c.config.AutoDelete,
+		c.config.Exclusive,
+		c.config.NoWait,
+		dlqArgs,
+	); err != nil {
+		_ = ch.Close()
+		return fmt.Errorf("declare dlq %s: %w", dlqName, err)
 	}
 
-	return nil
-}
-
-func (c *Consumer) Start(ctx context.Context, handler MessageHandler) error {
-	if c.conn == nil || c.conn.IsClosed() {
-		if err := c.connect(); err != nil {
-			return err
-		}
+	if err := ch.QueueBind(
+		dlqName,
+		c.config.RoutingKey,
+		dlxName,
+		c.config.NoWait,
+		nil,
+	); err != nil {
+		_ = ch.Close()
+		return fmt.Errorf("bind dlq %s: %w", dlqName, err)
 	}
 
-	deliveries, err := c.channel.Consume(
-		c.config.Queue,
-		"",    // consumer
-		false, // auto-ack
-		false, // exclusive
-		false, // no-local
-		false, // no-wait
-		nil,   // args
-	)
-	if err != nil {
-		return ErrConsumeFailed
+	if err := ch.Qos(c.config.PrefetchCount, c.config.PrefetchSize, c.config.Global); err != nil {
+		_ = ch.Close()
+		return fmt.Errorf("set qos: %w", err)
 	}
 
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-c.done:
-				return
-			case delivery, ok := <-deliveries:
-				if !ok {
-					return
-				}
-
-				startTime := time.Now()
-
-				// Parse message
-				var msg Message
-				if err := json.Unmarshal(delivery.Body, &msg); err != nil {
-					c.logger.Error("failed to unmarshal message",
-						zap.Error(err),
-						zap.String("queue", c.config.Queue),
-					)
-					incrementConsumeErrors(c.config.Queue, "unmarshal_error")
-					delivery.Nack(false, false)
-					continue
-				}
-
-				// Process message
-				err := handler(&msg)
-				if err != nil {
-					c.logger.Error("failed to process message",
-						zap.Error(err),
-						zap.String("queue", c.config.Queue),
-						zap.String("message_id", msg.ID),
-					)
-					incrementConsumeErrors(c.config.Queue, "handler_error")
-					delivery.Nack(false, true) // requeue
-					continue
-				}
-
-				// Acknowledge message
-				if err := delivery.Ack(false); err != nil {
-					c.logger.Error("failed to acknowledge message",
-						zap.Error(err),
-						zap.String("queue", c.config.Queue),
-						zap.String("message_id", msg.ID),
-					)
-					incrementConsumeErrors(c.config.Queue, "ack_error")
-					continue
-				}
-
-				incrementMessagesConsumed(c.config.Queue)
-				observeProcessingTime(c.config.Queue, time.Since(startTime).Seconds())
-			}
-		}
-	}()
-
-	return nil
-}
-
-func (c *Consumer) Close() error {
 	if c.channel != nil {
-		c.channel.Close()
+		_ = c.channel.Close()
+	}
+	c.channel = ch
+
+	return nil
+}
+
+// Start launches the consume loop in the background and returns
+// immediately. It reconnects with backoff on connection/channel loss and
+// stops cleanly when ctx is cancelled or Close is called.
+func (c *Consumer) Start(ctx context.Context, handler MessageHandler) error {
+	c.wg.Add(1)
+	go c.run(ctx, handler)
+	return nil
+}
+
+func (c *Consumer) run(ctx context.Context, handler MessageHandler) {
+	defer c.wg.Done()
+
+	backoff := c.config.RetryDelay
+	if backoff <= 0 {
+		backoff = DefaultRetryDelay
+	}
+	const maxBackoff = 30 * time.Second
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-c.done:
+			return
+		default:
+		}
+
+		if err := c.connect(); err != nil {
+			c.logger.Error("failed to connect to rabbitmq, retrying",
+				zap.Error(err), zap.Duration("backoff", backoff))
+			if !c.sleep(ctx, backoff) {
+				return
+			}
+			backoff = nextBackoff(backoff, maxBackoff)
+			continue
+		}
+		backoff = c.config.RetryDelay
+		if backoff <= 0 {
+			backoff = DefaultRetryDelay
+		}
+
+		c.mu.Lock()
+		ch := c.channel
+		c.mu.Unlock()
+
+		deliveries, err := ch.Consume(
+			c.config.Queue,
+			"",    // consumer tag
+			false, // auto-ack
+			false, // exclusive
+			false, // no-local
+			false, // no-wait
+			nil,   // args
+		)
+		if err != nil {
+			c.logger.Error("failed to start consuming, retrying",
+				zap.Error(err), zap.Duration("backoff", backoff))
+			if !c.sleep(ctx, backoff) {
+				return
+			}
+			backoff = nextBackoff(backoff, maxBackoff)
+			continue
+		}
+
+		c.logger.Info("consuming", zap.String("queue", c.config.Queue))
+		connectionLost := c.consumeLoop(ctx, deliveries, handler)
+		if !connectionLost {
+			// Stopped because of shutdown, not a connection/channel loss.
+			return
+		}
+
+		c.logger.Warn("delivery channel closed unexpectedly, reconnecting",
+			zap.String("queue", c.config.Queue))
+		if !c.sleep(ctx, backoff) {
+			return
+		}
+		backoff = nextBackoff(backoff, maxBackoff)
+	}
+}
+
+func nextBackoff(current, max time.Duration) time.Duration {
+	next := current * 2
+	if next > max {
+		return max
+	}
+	return next
+}
+
+// sleep waits for d, returning false if shutdown was signaled meanwhile.
+func (c *Consumer) sleep(ctx context.Context, d time.Duration) bool {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+		return true
+	case <-ctx.Done():
+		return false
+	case <-c.done:
+		return false
+	}
+}
+
+// consumeLoop processes deliveries until the channel/connection is lost
+// (returns true, so the caller reconnects) or shutdown is signaled
+// (returns false). Each delivery is fully handled (acked or nack'd)
+// before the next select iteration, so an in-flight message always
+// finishes before Close() can tear down the channel.
+func (c *Consumer) consumeLoop(ctx context.Context, deliveries <-chan amqp.Delivery, handler MessageHandler) bool {
+	for {
+		select {
+		case <-ctx.Done():
+			return false
+		case <-c.done:
+			return false
+		case delivery, ok := <-deliveries:
+			if !ok {
+				return true
+			}
+			c.handleDelivery(delivery, handler)
+		}
+	}
+}
+
+func (c *Consumer) handleDelivery(delivery amqp.Delivery, handler MessageHandler) {
+	startTime := time.Now()
+
+	var msg Message
+	if err := json.Unmarshal(delivery.Body, &msg); err != nil {
+		c.logger.Error("failed to unmarshal message; dropping to DLQ",
+			zap.Error(err), zap.String("queue", c.config.Queue))
+		incrementConsumeErrors(c.config.Queue, "unmarshal_error")
+		if nackErr := delivery.Nack(false, false); nackErr != nil {
+			c.logger.Error("failed to nack unparseable message", zap.Error(nackErr))
+		}
+		return
+	}
+
+	if err := handler(&msg); err != nil {
+		c.logger.Error("failed to process message; dropping to DLQ",
+			zap.Error(err),
+			zap.String("queue", c.config.Queue),
+			zap.String("message_id", msg.ID))
+		incrementConsumeErrors(c.config.Queue, "handler_error")
+		// No requeue: a message that fails processing is either poison or
+		// will keep failing. Requeueing would spin it forever; the DLQ
+		// (bound via x-dead-letter-exchange) is where it belongs.
+		if nackErr := delivery.Nack(false, false); nackErr != nil {
+			c.logger.Error("failed to nack failed message", zap.Error(nackErr))
+		}
+		return
+	}
+
+	if err := delivery.Ack(false); err != nil {
+		c.logger.Error("failed to acknowledge message",
+			zap.Error(err),
+			zap.String("queue", c.config.Queue),
+			zap.String("message_id", msg.ID))
+		incrementConsumeErrors(c.config.Queue, "ack_error")
+		return
+	}
+
+	incrementMessagesConsumed(c.config.Queue)
+	observeProcessingTime(c.config.Queue, time.Since(startTime).Seconds())
+}
+
+// Close signals shutdown, waits for the in-flight delivery (if any) and the
+// consume loop to finish, then closes the channel and connection.
+func (c *Consumer) Close() error {
+	c.closeOnce.Do(func() { close(c.done) })
+	c.wg.Wait()
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	var firstErr error
+	if c.channel != nil {
+		if err := c.channel.Close(); err != nil && err != amqp.ErrClosed {
+			firstErr = err
+		}
 	}
 	if c.conn != nil {
-		c.conn.Close()
+		if err := c.conn.Close(); err != nil && err != amqp.ErrClosed && firstErr == nil {
+			firstErr = err
+		}
 	}
-	close(c.done)
-	return nil
+	return firstErr
 }

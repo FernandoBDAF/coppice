@@ -2,8 +2,8 @@
 
 **Project:** operational-workers  
 **Language:** Go  
-**Status:** 📋 Architecture planned  
-**Session Focus:** Create Go workers for email, image, and profile task processing
+**Status:** ✅ Implemented and verified — `go build/vet/test ./...` pass; see README.md for the current contract table, env vars, and known leftovers (notably a profile-exchange drift between CONTRACTS.md and api-service's actual publisher, resolved in code by matching the publisher).
+**Session Focus (historical):** Create Go workers for email, image, and profile task processing. The plan below (module path, package layout, Makefile) was followed as the initial scaffold; on first real verification (2026-07) the message-parsing chain, DLQ topology, reconnect handling, and payload shapes described here were found broken/drifted from `graph-worker/shared/contracts/` and were rewritten — README.md is now the source of truth for behavior, this file is kept for historical/design-rationale context.
 
 ---
 

@@ -1,6 +1,7 @@
 package image
 
 import (
+	"encoding/json"
 	"errors"
 	"time"
 
@@ -8,143 +9,90 @@ import (
 )
 
 var (
-	ErrInvalidImageURL       = errors.New("invalid image URL")
-	ErrInvalidProcessingType = errors.New("invalid processing type")
-	ErrInvalidPriority       = errors.New("invalid priority")
-	ErrInvalidParameters     = errors.New("invalid processing parameters")
-	ErrInvalidTimeout        = errors.New("invalid timeout value")
+	ErrInvalidSourceURL  = errors.New("invalid source_url")
+	ErrInvalidOperation  = errors.New("invalid operation")
+	ErrInvalidTargetPath = errors.New("invalid target_path")
+	ErrInvalidDimensions = errors.New("width/height must be positive when set")
+	ErrInvalidQuality    = errors.New("quality must be between 1 and 100 when set")
+	ErrInvalidEnvelope   = errors.New("envelope type must be 'image.process'")
 )
 
-// ProcessingType represents the type of image processing to perform
-type ProcessingType string
+// Operation is advisory only: MESSAGE_FORMAT.md does not close this to an
+// enum, so unrecognized values are simulated generically rather than
+// rejected (forward compatibility).
+type Operation string
 
 const (
-	ProcessingTypeResize  ProcessingType = "resize"
-	ProcessingTypeFilter  ProcessingType = "filter"
-	ProcessingTypeAnalyze ProcessingType = "analyze"
+	OperationResize   Operation = "resize"
+	OperationCompress Operation = "compress"
+	OperationConvert  Operation = "convert"
 )
 
-// Priority represents the image processing priority
-type Priority string
-
-const (
-	PriorityHigh   Priority = "high"
-	PriorityNormal Priority = "normal"
-	PriorityLow    Priority = "low"
-)
-
-// ImagePayload contains the image processing specific data
+// ImagePayload mirrors graph-worker/shared/contracts/MESSAGE_FORMAT.md
+// "Image Payload" exactly.
 type ImagePayload struct {
-	ImageURL       string                 `json:"image_url"`
-	ProcessingType ProcessingType         `json:"processing_type"`
-	Parameters     map[string]interface{} `json:"parameters"`
-	CallbackURL    string                 `json:"callback_url"`
-	TimeoutSeconds int                    `json:"timeout_seconds"`
-	Priority       Priority               `json:"priority"`
+	Operation  string `json:"operation"`
+	SourceURL  string `json:"source_url"`
+	TargetPath string `json:"target_path"`
+	Width      int    `json:"width,omitempty"`
+	Height     int    `json:"height,omitempty"`
+	Quality    int    `json:"quality,omitempty"`
+	Format     string `json:"format,omitempty"`
 }
 
-// ImageMessage represents the full message structure expected
+// ImageMessage is the parsed envelope + typed payload for an image.process task.
 type ImageMessage struct {
-	Type      string       `json:"type"`
-	Payload   ImagePayload `json:"payload"`
-	CreatedAt time.Time    `json:"created_at"`
-
-	// Embed the queue message for access to ID, Timestamp, etc.
-	queue.Message
+	ID        string
+	Type      string
+	Timestamp time.Time
+	Payload   ImagePayload
+	Metadata  map[string]string
 }
 
-// NewImageMessage creates a new image message from a queue message
+// NewImageMessage decodes msg.Payload (the envelope's "payload" object)
+// into ImagePayload.
 func NewImageMessage(msg *queue.Message) (*ImageMessage, error) {
-	var imageMsg ImageMessage
-
-	// Unmarshal the entire payload to get the structured message
-	if err := msg.UnmarshalPayload(&imageMsg); err != nil {
+	var payload ImagePayload
+	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
 		return nil, err
 	}
 
-	// Copy the queue message properties
-	imageMsg.Message = *msg
-
-	return &imageMsg, nil
+	return &ImageMessage{
+		ID:        msg.ID,
+		Type:      msg.Type,
+		Timestamp: msg.Timestamp,
+		Payload:   payload,
+		Metadata:  msg.Metadata,
+	}, nil
 }
 
-// Validate validates the image message
+// Validate checks the envelope + required payload fields. Unknown
+// operation values are tolerated; only structurally required/well-formed
+// fields are enforced.
 func (m *ImageMessage) Validate() error {
-	if m.Type != "image" {
-		return errors.New("message type must be 'image'")
+	if m.Type != "" && m.Type != "image.process" {
+		return ErrInvalidEnvelope
 	}
 
-	if m.Payload.ImageURL == "" {
-		return ErrInvalidImageURL
+	if m.Payload.SourceURL == "" {
+		return ErrInvalidSourceURL
 	}
 
-	// Validate processing type
-	switch m.Payload.ProcessingType {
-	case ProcessingTypeResize, ProcessingTypeFilter, ProcessingTypeAnalyze:
-		// Valid processing types
-	default:
-		return ErrInvalidProcessingType
+	if m.Payload.Operation == "" {
+		return ErrInvalidOperation
 	}
 
-	// Validate priority
-	switch m.Payload.Priority {
-	case PriorityHigh, PriorityNormal, PriorityLow:
-		// Valid priorities
-	default:
-		return ErrInvalidPriority
+	if m.Payload.TargetPath == "" {
+		return ErrInvalidTargetPath
 	}
 
-	if m.Payload.Parameters == nil {
-		return ErrInvalidParameters
+	if m.Payload.Width < 0 || m.Payload.Height < 0 {
+		return ErrInvalidDimensions
 	}
 
-	// Validate timeout
-	if m.Payload.TimeoutSeconds <= 0 || m.Payload.TimeoutSeconds > 600 {
-		return ErrInvalidTimeout
+	if m.Payload.Quality != 0 && (m.Payload.Quality < 1 || m.Payload.Quality > 100) {
+		return ErrInvalidQuality
 	}
 
 	return nil
-}
-
-// GetPriorityScore returns a numeric score for priority ordering
-func (m *ImageMessage) GetPriorityScore() int {
-	switch m.Payload.Priority {
-	case PriorityHigh:
-		return 3
-	case PriorityNormal:
-		return 2
-	case PriorityLow:
-		return 1
-	default:
-		return 0
-	}
-}
-
-// GetExpectedProcessingTime returns expected processing duration based on type and priority
-func (m *ImageMessage) GetExpectedProcessingTime() time.Duration {
-	baseDuration := m.getBaseProcessingTime()
-
-	// Adjust based on priority
-	switch m.Payload.Priority {
-	case PriorityHigh:
-		return baseDuration * 3 / 4 // 25% faster for high priority
-	case PriorityLow:
-		return baseDuration * 5 / 4 // 25% slower for low priority
-	default:
-		return baseDuration
-	}
-}
-
-// getBaseProcessingTime returns base processing time for each operation type
-func (m *ImageMessage) getBaseProcessingTime() time.Duration {
-	switch m.Payload.ProcessingType {
-	case ProcessingTypeResize:
-		return 10 * time.Second // Resize is relatively fast
-	case ProcessingTypeFilter:
-		return 15 * time.Second // Filtering takes more time
-	case ProcessingTypeAnalyze:
-		return 25 * time.Second // Analysis is most resource intensive
-	default:
-		return 15 * time.Second
-	}
 }

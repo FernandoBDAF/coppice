@@ -10,7 +10,9 @@ import (
 	"github.com/fernandobarroso/microservices/operational-workers/internal/common/utils"
 )
 
-// Processor handles profile task processing
+// Processor handles profile task processing. No real profile store is
+// wired up (per mission scope) — Process simulates the task and logs
+// coherently so behavior is observable end-to-end.
 type Processor struct {
 	metrics *utils.ProcessorMetrics
 }
@@ -34,24 +36,12 @@ func (p *Processor) Process(ctx context.Context, msg *queue.Message) error {
 		return fmt.Errorf("failed to parse profile message: %w", err)
 	}
 
-	if err := p.Validate(msg); err != nil {
+	if err := profileMsg.Validate(); err != nil {
 		p.metrics.RecordProcessingError()
 		return err
 	}
 
-	switch profileMsg.Payload.TaskType {
-	case TaskTypeSync:
-		err = p.handleSync(ctx, profileMsg)
-	case TaskTypeValidate:
-		err = p.handleValidate(ctx, profileMsg)
-	case TaskTypeEnrich:
-		err = p.handleEnrich(ctx, profileMsg)
-	default:
-		p.metrics.RecordProcessingError()
-		return ErrInvalidTaskType
-	}
-
-	if err != nil {
+	if err := p.runTask(ctx, profileMsg); err != nil {
 		p.metrics.RecordProcessingError()
 		return err
 	}
@@ -74,41 +64,38 @@ func (p *Processor) Type() string {
 	return "profile"
 }
 
-// HandleError handles processing errors
+// HandleError handles processing errors. Returning a non-nil error here
+// tells the consumer to nack the message WITHOUT requeue, so it lands on
+// the profile-processing.dlq instead of being redelivered forever.
 func (p *Processor) HandleError(ctx context.Context, msg *queue.Message, err error) error {
-	log.Printf("Profile processing error: %v", err)
+	log.Printf("profile processing error: %v", err)
 	return err
 }
 
-func (p *Processor) handleSync(ctx context.Context, msg *ProfileMessage) error {
-	log.Printf("Syncing profile %s", msg.Payload.ProfileID)
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-time.After(200 * time.Millisecond):
-		log.Printf("Profile synced: %s", msg.Payload.ProfileID)
-		return nil
+// runTask dispatches to a task-specific simulated handler. Unrecognized
+// task_type values still get a generic simulated pass (forward
+// compatible) rather than failing.
+func (p *Processor) runTask(ctx context.Context, msg *ProfileMessage) error {
+	switch TaskType(msg.Payload.TaskType) {
+	case TaskTypeSync:
+		return p.simulate(ctx, msg, "syncing", 200*time.Millisecond, "synced")
+	case TaskTypeValidate:
+		return p.simulate(ctx, msg, "validating", 100*time.Millisecond, "validated")
+	case TaskTypeEnrich:
+		return p.simulate(ctx, msg, "enriching", 300*time.Millisecond, "enriched")
+	default:
+		log.Printf("unrecognized profile task_type %q for profile %s; handling generically", msg.Payload.TaskType, msg.Payload.ProfileID)
+		return p.simulate(ctx, msg, "processing", 100*time.Millisecond, "processed")
 	}
 }
 
-func (p *Processor) handleValidate(ctx context.Context, msg *ProfileMessage) error {
-	log.Printf("Validating profile %s", msg.Payload.ProfileID)
+func (p *Processor) simulate(ctx context.Context, msg *ProfileMessage, verb string, delay time.Duration, doneVerb string) error {
+	log.Printf("%s profile %s", verb, msg.Payload.ProfileID)
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
-	case <-time.After(100 * time.Millisecond):
-		log.Printf("Profile validated: %s", msg.Payload.ProfileID)
-		return nil
-	}
-}
-
-func (p *Processor) handleEnrich(ctx context.Context, msg *ProfileMessage) error {
-	log.Printf("Enriching profile %s", msg.Payload.ProfileID)
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-time.After(300 * time.Millisecond):
-		log.Printf("Profile enriched: %s", msg.Payload.ProfileID)
+	case <-time.After(delay):
+		log.Printf("profile %s: %s", doneVerb, msg.Payload.ProfileID)
 		return nil
 	}
 }

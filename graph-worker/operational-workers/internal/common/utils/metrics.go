@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -14,45 +15,57 @@ type ProcessorMetrics struct {
 	MessagesInFlight  prometheus.Gauge
 }
 
-// NewProcessorMetrics creates a new set of processor metrics
+// NewProcessorMetrics creates a new set of processor metrics. Registration
+// is idempotent per workerType: constructing a processor more than once in
+// the same process (e.g. from multiple tests in one package, or a future
+// caller) reuses the already-registered collectors instead of panicking
+// with prometheus.MustRegister's "duplicate metrics collector registration".
 func NewProcessorMetrics(workerType string) *ProcessorMetrics {
-	metrics := &ProcessorMetrics{
-		ProcessingTime: prometheus.NewHistogram(
+	return &ProcessorMetrics{
+		ProcessingTime: RegisterOrExisting(prometheus.NewHistogram(
 			prometheus.HistogramOpts{
 				Name:    fmt.Sprintf("%s_processing_time_seconds", workerType),
 				Help:    fmt.Sprintf("Time taken to process messages for %s worker", workerType),
 				Buckets: prometheus.DefBuckets, // 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10
 			},
-		),
-		ProcessingErrors: prometheus.NewCounter(
+		)),
+		ProcessingErrors: RegisterOrExisting(prometheus.NewCounter(
 			prometheus.CounterOpts{
 				Name: fmt.Sprintf("%s_processing_errors_total", workerType),
 				Help: fmt.Sprintf("Total number of processing errors for %s worker", workerType),
 			},
-		),
-		ProcessingSuccess: prometheus.NewCounter(
+		)),
+		ProcessingSuccess: RegisterOrExisting(prometheus.NewCounter(
 			prometheus.CounterOpts{
 				Name: fmt.Sprintf("%s_processing_success_total", workerType),
 				Help: fmt.Sprintf("Total number of successful processing for %s worker", workerType),
 			},
-		),
-		MessagesInFlight: prometheus.NewGauge(
+		)),
+		MessagesInFlight: RegisterOrExisting(prometheus.NewGauge(
 			prometheus.GaugeOpts{
 				Name: fmt.Sprintf("%s_messages_in_flight", workerType),
 				Help: fmt.Sprintf("Number of messages currently being processed by %s worker", workerType),
 			},
-		),
+		)),
 	}
+}
 
-	// Register metrics
-	prometheus.MustRegister(
-		metrics.ProcessingTime,
-		metrics.ProcessingErrors,
-		metrics.ProcessingSuccess,
-		metrics.MessagesInFlight,
-	)
-
-	return metrics
+// RegisterOrExisting registers c with the default Prometheus registry, or
+// returns the already-registered collector of the same type/name if it was
+// registered before. This makes metric construction safe to call more than
+// once per process (tests, hypothetical multi-instantiation) without the
+// panic that prometheus.MustRegister would raise.
+func RegisterOrExisting[T prometheus.Collector](c T) T {
+	if err := prometheus.Register(c); err != nil {
+		var are prometheus.AlreadyRegisteredError
+		if errors.As(err, &are) {
+			if existing, ok := are.ExistingCollector.(T); ok {
+				return existing
+			}
+		}
+		panic(err)
+	}
+	return c
 }
 
 // RecordProcessingStart records the start of message processing

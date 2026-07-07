@@ -9,18 +9,25 @@ import (
 	"syscall"
 	"time"
 
-	commonQueue "github.com/fernandobarroso/microservices/operational-workers/internal/common/queue"
 	"github.com/fernandobarroso/microservices/operational-workers/internal/common/processors"
+	commonQueue "github.com/fernandobarroso/microservices/operational-workers/internal/common/queue"
+	"github.com/fernandobarroso/microservices/operational-workers/internal/common/utils"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-// WorkerConfig holds configuration for any worker
+// WorkerConfig holds configuration for any worker. Exchange/Queue/RoutingKey
+// and the TTL/DLQ fields must match graph-worker/shared/contracts and the
+// api-service publisher's declared topology exactly — see cmd/*/main.go for
+// per-worker values and any documented deviations.
 type WorkerConfig struct {
 	WorkerType    string
 	QueueName     string
 	ExchangeName  string
 	RoutingKey    string
 	PrefetchCount int
+	MessageTTL    time.Duration
+	DeadLetterTTL time.Duration
+	MaxRetries    int
 	HTTPPort      string
 }
 
@@ -48,35 +55,12 @@ func NewBaseWorker(config *WorkerConfig, processor processors.MessageProcessor) 
 	queueConfig.Exchange = config.ExchangeName
 	queueConfig.RoutingKey = config.RoutingKey
 	queueConfig.PrefetchCount = config.PrefetchCount
+	queueConfig.MessageTTL = config.MessageTTL
+	queueConfig.DeadLetterTTL = config.DeadLetterTTL
+	queueConfig.MaxRetries = config.MaxRetries
+	queueConfig.URL = resolveRabbitURL()
 
-	// Build RabbitMQ URL from environment
-	rabbitUser := os.Getenv("RABBITMQ_USER")
-	rabbitPassword := os.Getenv("RABBITMQ_PASSWORD")
-	rabbitHost := os.Getenv("RABBITMQ_HOST")
-	rabbitPort := os.Getenv("RABBITMQ_PORT")
-	rabbitVhost := os.Getenv("RABBITMQ_VHOST")
-
-	// Use defaults if not provided
-	if rabbitUser == "" {
-		rabbitUser = "guest"
-	}
-	if rabbitPassword == "" {
-		rabbitPassword = "guest"
-	}
-	if rabbitHost == "" {
-		rabbitHost = "localhost"
-	}
-	if rabbitPort == "" {
-		rabbitPort = "5672"
-	}
-	if rabbitVhost == "" {
-		rabbitVhost = "/"
-	}
-
-	queueConfig.URL = fmt.Sprintf("amqp://%s:%s@%s:%s/%s",
-		rabbitUser, rabbitPassword, rabbitHost, rabbitPort, rabbitVhost)
-
-	// Create consumer
+	// Create consumer (connects lazily in Start, with reconnect-on-failure).
 	consumer, err := commonQueue.NewConsumer(queueConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create consumer: %w", err)
@@ -85,30 +69,29 @@ func NewBaseWorker(config *WorkerConfig, processor processors.MessageProcessor) 
 	// Create HTTP server for health checks
 	server := NewHTTPServer(config.HTTPPort)
 
-	// Initialize metrics
+	// Initialize metrics. Registration is idempotent per WorkerType (see
+	// utils.RegisterOrExisting) so constructing a worker more than once in
+	// the same process doesn't panic on duplicate collector registration.
 	metrics := &WorkerMetrics{
-		ConsumeLatency: prometheus.NewHistogram(
+		ConsumeLatency: utils.RegisterOrExisting(prometheus.NewHistogram(
 			prometheus.HistogramOpts{
 				Name: fmt.Sprintf("%s_consume_latency_seconds", config.WorkerType),
 				Help: fmt.Sprintf("Time taken to consume messages for %s worker", config.WorkerType),
 			},
-		),
-		ConsumeErrors: prometheus.NewCounter(
+		)),
+		ConsumeErrors: utils.RegisterOrExisting(prometheus.NewCounter(
 			prometheus.CounterOpts{
 				Name: fmt.Sprintf("%s_consume_errors_total", config.WorkerType),
 				Help: fmt.Sprintf("Total number of consume errors for %s worker", config.WorkerType),
 			},
-		),
-		MessageAge: prometheus.NewHistogram(
+		)),
+		MessageAge: utils.RegisterOrExisting(prometheus.NewHistogram(
 			prometheus.HistogramOpts{
 				Name: fmt.Sprintf("%s_message_age_seconds", config.WorkerType),
 				Help: fmt.Sprintf("Age of messages when consumed by %s worker", config.WorkerType),
 			},
-		),
+		)),
 	}
-
-	// Register metrics
-	prometheus.MustRegister(metrics.ConsumeLatency, metrics.ConsumeErrors, metrics.MessageAge)
 
 	return &BaseWorker{
 		config:    config,
@@ -117,6 +100,26 @@ func NewBaseWorker(config *WorkerConfig, processor processors.MessageProcessor) 
 		server:    server,
 		metrics:   metrics,
 	}, nil
+}
+
+// resolveRabbitURL implements the CONTRACTS.md env var contract: RABBITMQ_URL
+// is authoritative (default amqp://guest:guest@rabbitmq:5672/); the
+// individual RABBITMQ_HOST/PORT/USER/PASSWORD/VHOST vars remain supported
+// for finer-grained overrides when RABBITMQ_URL is not set.
+func resolveRabbitURL() string {
+	if url := os.Getenv("RABBITMQ_URL"); url != "" {
+		return url
+	}
+
+	user := utils.GetEnvOrDefault("RABBITMQ_USER", "guest")
+	password := utils.GetEnvOrDefault("RABBITMQ_PASSWORD", "guest")
+	host := utils.GetEnvOrDefault("RABBITMQ_HOST", "rabbitmq")
+	port := utils.GetEnvOrDefault("RABBITMQ_PORT", "5672")
+	// Default vhost is the empty string so the URL ends in a single "/",
+	// matching the contract default exactly (amqp://guest:guest@rabbitmq:5672/).
+	vhost := utils.GetEnvOrDefault("RABBITMQ_VHOST", "")
+
+	return fmt.Sprintf("amqp://%s:%s@%s:%s/%s", user, password, host, port, vhost)
 }
 
 // Start starts the worker
@@ -131,28 +134,32 @@ func (w *BaseWorker) Start(ctx context.Context) error {
 		}
 	}()
 
-	// Message handler with metrics
+	// Message handler with metrics. Processing runs on a detached context
+	// (not the shutdown-signal ctx) so an in-flight message finishes
+	// instead of being aborted mid-way when SIGTERM/SIGINT arrives; the
+	// consumer stops pulling *new* deliveries as soon as ctx is done.
 	handler := func(msg *commonQueue.Message) error {
 		timer := prometheus.NewTimer(w.metrics.ConsumeLatency)
 		defer timer.ObserveDuration()
 
+		processCtx := context.Background()
+
 		// Validate message first
 		if err := w.processor.Validate(msg); err != nil {
 			w.metrics.ConsumeErrors.Inc()
-			return w.processor.HandleError(ctx, msg, err)
+			return w.processor.HandleError(processCtx, msg, err)
 		}
 
 		// Process message
-		err := w.processor.Process(ctx, msg)
-		if err != nil {
+		if err := w.processor.Process(processCtx, msg); err != nil {
 			w.metrics.ConsumeErrors.Inc()
-			return w.processor.HandleError(ctx, msg, err)
+			return w.processor.HandleError(processCtx, msg, err)
 		}
 
 		return nil
 	}
 
-	// Start consumer
+	// Start consumer (reconnects internally on connection/channel loss)
 	return w.consumer.Start(ctx, handler)
 }
 
@@ -171,7 +178,8 @@ func (w *BaseWorker) Shutdown(ctx context.Context) error {
 		return err
 	}
 
-	// Close consumer
+	// Close consumer: waits for the in-flight delivery to finish before
+	// closing the channel/connection (see Consumer.Close).
 	return w.consumer.Close()
 }
 

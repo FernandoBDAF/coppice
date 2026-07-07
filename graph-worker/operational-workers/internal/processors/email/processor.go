@@ -10,7 +10,9 @@ import (
 	"github.com/fernandobarroso/microservices/operational-workers/internal/common/utils"
 )
 
-// EmailProcessor handles email message processing
+// EmailProcessor handles email message processing. No real SMTP/email
+// service is wired up (per mission scope) — Process simulates the send
+// and logs coherently so behavior is observable end-to-end.
 type EmailProcessor struct {
 	metrics *utils.ProcessorMetrics
 }
@@ -24,38 +26,22 @@ func NewEmailProcessor() *EmailProcessor {
 
 // Process processes an email message
 func (p *EmailProcessor) Process(ctx context.Context, msg *queue.Message) error {
-	// Start metrics tracking
 	timer := p.metrics.StartTimer()
 	defer timer.ObserveDuration()
 	p.metrics.RecordProcessingStart()
 
-	// Convert to email message
 	emailMsg, err := NewEmailMessage(msg)
 	if err != nil {
 		p.metrics.RecordProcessingError()
 		return fmt.Errorf("failed to parse email message: %w", err)
 	}
 
-	// Validate the message
-	if err := p.Validate(msg); err != nil {
+	if err := emailMsg.Validate(); err != nil {
 		p.metrics.RecordProcessingError()
 		return err
 	}
 
-	// Process based on email type
-	switch emailMsg.Payload.EmailType {
-	case EmailTypeWelcome:
-		err = p.sendWelcomeEmail(ctx, emailMsg)
-	case EmailTypeNotification:
-		err = p.sendNotificationEmail(ctx, emailMsg)
-	case EmailTypeAlert:
-		err = p.sendAlertEmail(ctx, emailMsg)
-	default:
-		p.metrics.RecordProcessingError()
-		return ErrInvalidEmailType
-	}
-
-	if err != nil {
+	if err := p.sendEmail(ctx, emailMsg); err != nil {
 		p.metrics.RecordProcessingError()
 		return err
 	}
@@ -78,76 +64,37 @@ func (p *EmailProcessor) Type() string {
 	return "email"
 }
 
-// HandleError handles processing errors
+// HandleError handles processing errors. Returning a non-nil error here
+// tells the consumer to nack the message WITHOUT requeue, so it lands on
+// the email-processing.dlq instead of being redelivered forever.
 func (p *EmailProcessor) HandleError(ctx context.Context, msg *queue.Message, err error) error {
-	log.Printf("Email processing error: %v", err)
-
-	// Could implement retry logic here
-	// For now, just return the error which will cause message requeue
+	log.Printf("email processing error: %v", err)
 	return err
 }
 
-// sendWelcomeEmail simulates sending a welcome email
-func (p *EmailProcessor) sendWelcomeEmail(ctx context.Context, msg *EmailMessage) error {
-	log.Printf("📧 Sending WELCOME email to %s (Priority: %s)",
-		msg.Payload.Recipient, msg.Payload.Priority)
+// sendEmail simulates dispatching the email via the appropriate template
+// flow. Unrecognized email_type values still get a generic simulated send
+// (forward compatible) rather than failing.
+func (p *EmailProcessor) sendEmail(ctx context.Context, msg *EmailMessage) error {
+	delay := 150 * time.Millisecond
 
-	// Simulate email service call with different delays based on priority
-	delay := p.getProcessingDelay(msg.Payload.Priority)
-
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-time.After(delay):
-		log.Printf("✅ Welcome email sent successfully to %s", msg.Payload.Recipient)
-		return nil
-	}
-}
-
-// sendNotificationEmail simulates sending a notification email
-func (p *EmailProcessor) sendNotificationEmail(ctx context.Context, msg *EmailMessage) error {
-	log.Printf("📧 Sending NOTIFICATION email to %s (Priority: %s)",
-		msg.Payload.Recipient, msg.Payload.Priority)
-
-	// Simulate email service call
-	delay := p.getProcessingDelay(msg.Payload.Priority)
-
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-time.After(delay):
-		log.Printf("✅ Notification email sent successfully to %s", msg.Payload.Recipient)
-		return nil
-	}
-}
-
-// sendAlertEmail simulates sending an alert email
-func (p *EmailProcessor) sendAlertEmail(ctx context.Context, msg *EmailMessage) error {
-	log.Printf("🚨 Sending ALERT email to %s (Priority: %s)",
-		msg.Payload.Recipient, msg.Payload.Priority)
-
-	// Alert emails are processed faster
-	delay := p.getProcessingDelay(msg.Payload.Priority) / 2 // Alerts are faster
-
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-time.After(delay):
-		log.Printf("✅ Alert email sent successfully to %s", msg.Payload.Recipient)
-		return nil
-	}
-}
-
-// getProcessingDelay returns the processing delay based on priority
-func (p *EmailProcessor) getProcessingDelay(priority Priority) time.Duration {
-	switch priority {
-	case PriorityHigh:
-		return 2 * time.Second // High priority emails are faster
-	case PriorityNormal:
-		return 5 * time.Second // Normal processing time
-	case PriorityLow:
-		return 8 * time.Second // Low priority can take longer
+	switch EmailType(msg.Payload.EmailType) {
+	case EmailTypeWelcome:
+		log.Printf("sending WELCOME email to %s (template=%s)", msg.Payload.Recipient, msg.Payload.TemplateID)
+	case EmailTypeNotification:
+		log.Printf("sending NOTIFICATION email to %s (subject=%q)", msg.Payload.Recipient, msg.Payload.Subject)
+	case EmailTypeAlert:
+		log.Printf("sending ALERT email to %s (subject=%q)", msg.Payload.Recipient, msg.Payload.Subject)
+		delay = delay / 2 // alerts go out faster
 	default:
-		return 5 * time.Second
+		log.Printf("sending email (type=%s) to %s", msg.Payload.EmailType, msg.Payload.Recipient)
+	}
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(delay):
+		log.Printf("email sent successfully to %s", msg.Payload.Recipient)
+		return nil
 	}
 }

@@ -17,6 +17,14 @@ type Config struct {
 	Exclusive  bool
 	NoWait     bool
 
+	// Dead-letter topology. These MUST stay argument-identical to whatever
+	// the publisher (api-service) declares for the same routing key, or
+	// RabbitMQ raises a 406 PRECONDITION_FAILED channel error on redeclare.
+	// DLX is always "<Exchange>.dlx" and DLQ is always "<Queue>.dlq".
+	MessageTTL    time.Duration // x-message-ttl on the main queue
+	DeadLetterTTL time.Duration // x-message-ttl on the .dlq queue
+	MaxRetries    int           // x-max-retries (informational, mirrors publisher)
+
 	// Consumer Settings
 	PrefetchCount int
 	PrefetchSize  int
@@ -26,9 +34,8 @@ type Config struct {
 	Mandatory bool
 	Immediate bool
 
-	// Retry Settings
-	MaxRetries int
-	RetryDelay time.Duration
+	// Reconnect Settings
+	RetryDelay time.Duration // initial backoff between reconnect attempts
 
 	// Logging
 	LogLevel string
@@ -36,9 +43,6 @@ type Config struct {
 
 func NewConfig() *Config {
 	return &Config{
-		Exchange:      ExchangeName,
-		Queue:         QueueName,
-		RoutingKey:    RoutingKey,
 		Durable:       true,
 		AutoDelete:    false,
 		Exclusive:     false,

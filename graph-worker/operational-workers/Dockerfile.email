@@ -1,4 +1,4 @@
-FROM golang:1.22-alpine AS builder
+FROM golang:1.24-alpine AS builder
 
 WORKDIR /app
 
@@ -11,11 +11,14 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o email-worker ./cmd/email-worker
 
 FROM alpine:3.19
 
-RUN apk --no-cache add ca-certificates
+RUN apk --no-cache add ca-certificates && \
+    addgroup -S worker && adduser -S -G worker worker
 
 WORKDIR /app
 
-COPY --from=builder /app/email-worker .
+COPY --from=builder --chown=worker:worker /app/email-worker .
+
+USER worker
 
 EXPOSE 8080
 
