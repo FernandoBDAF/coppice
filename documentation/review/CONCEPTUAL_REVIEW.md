@@ -224,3 +224,11 @@ setup (`make init-secrets`), SOPS/sealed-secrets for k8s, `.env` gitignored
   dial penalties; client logs bypass zap; only `/ready` tells the truth.
   Fail-fast cache path + `redis.SetLogger` are v4-hardening candidates;
   latency-based SLIs (v3) are the operational tell.
+- **`/ready` ANDs every dependency → k8s amplifies broker outage to full
+  API outage** (EXP-20 on kind,
+  [write-up](../experiments/2026-07-10-readiness-coupling-broker-outage.md)):
+  compose kept CRUD serving through a RabbitMQ outage; on Kubernetes the
+  same `/ready` fails the readinessProbe, the Service loses every endpoint,
+  and nginx 503s the routes that never needed the broker. Readiness should
+  gate on what all routes need (PG), or the app should serve degraded —
+  decide in v4; the v8 template must not ship the AND.

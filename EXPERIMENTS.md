@@ -449,14 +449,21 @@ kind ≥ v0.23 (kube-network-policies in kindnet) enforces NetworkPolicy.
 4. Allowed paths work: from the scratch pod DNS resolves (allow-dns), and
    `kubectl -n lab-core exec deploy/api-service -- wget -qO- -T 3
    http://auth-service:3000/health` returns 200.
-5. Remove-and-restore: `kubectl -n lab-infra delete networkpolicy
-   default-deny-all postgres` → step 3's denied path now **connects**;
-   re-apply the overlay (`kustomize build … | kubectl apply -f -`) → denied
-   again.
+5. Remove-and-restore — and learn the real semantics: deleting only the
+   *ingress-side* guards (`lab-infra: default-deny-all postgres`) does NOT
+   open the path (the worker's egress side still denies); deleting the
+   worker-selecting egress policies (`lab-core: default-deny-all workers`)
+   is *still* not enough — **`allow-dns`'s empty podSelector selects every
+   pod, and any selecting egress policy imposes default-deny for everything
+   it doesn't allow** (policies are a union of allows; there is no deny
+   primitive). Only after `lab-core: allow-dns` is also gone does
+   worker→postgres connect. Re-apply the overlay → denied again.
 
-**Expect:** every deny is a timeout, every allow succeeds, and the
-remove/restore flip proves the policies (not coincidence) are doing the
-denying. Cleanup: ensure the overlay is re-applied.
+**Expect:** every deny is a timeout, every allow succeeds, and the flip
+opens only when **no** egress policy selects the worker (calibrated
+2026-07-10: exactly the allow-dns removal was the last domino) — proving
+enforcement and teaching union-of-allows in one move. Cleanup: re-apply the
+overlay (15 policies: 6 lab-core + 9 lab-infra).
 
 ---
 

@@ -52,6 +52,13 @@ spec:
         - name: api-service
           image: localhost:5001/api-service:dev
           imagePullPolicy: Always
+          # drain window: endpoints propagation lags SIGTERM, so without this
+          # a rolling update briefly routes new connections to a terminating
+          # pod (observed: 2/200 failed probes in EXP-22)
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sleep", "5"]
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:

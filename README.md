@@ -146,9 +146,12 @@ Envelope and payload schemas: [graph-worker/shared/contracts](graph-worker/share
 │   ├── operational-workers/  # Go consumers (email/image/profile)
 │   ├── graphrag-service/     # Python document consumer
 │   └── shared/contracts/     # routing keys + message format (canonical)
-├── documentation/            # PRD, reviews, deployment, guides, planning archive
-└── legacy_project/           # archived pre-consolidation code (era-1 k8s lab)
+├── deploy/                   # kind profiles + kustomize tree (cluster lab, PRD v2)
+└── documentation/            # PRD, reviews, deployment, guides, planning archive
 ```
+
+Era-1 (the pre-consolidation k8s lab) lives on branch `archive/era-1`
+(mined into `deploy/` during v2 — ADR-010.4).
 
 ## Deployment
 

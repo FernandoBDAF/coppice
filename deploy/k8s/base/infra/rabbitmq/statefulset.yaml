@@ -77,25 +77,32 @@ spec:
             - name: config
               mountPath: /etc/rabbitmq/conf.d/20-lab.conf
               subPath: rabbitmq.conf
+          # Probe economics (found live, EXP-20): rabbitmq-diagnostics spawns
+          # an Erlang VM per call — >10s under a tight CPU limit, so
+          # status/check_port_connectivity probes put the broker in a
+          # liveness-kill loop. Readiness = TCP on 5672 (the exact property
+          # consumers need, ~free); liveness = `ping` (lightest diagnostic)
+          # with generous timeout.
           readinessProbe:
-            exec:
-              command: ["rabbitmq-diagnostics", "-q", "check_port_connectivity"]
+            tcpSocket:
+              port: amqp
             initialDelaySeconds: 10
             periodSeconds: 10
-            timeoutSeconds: 8
+            timeoutSeconds: 5
           livenessProbe:
             exec:
-              command: ["rabbitmq-diagnostics", "-q", "status"]
+              command: ["rabbitmq-diagnostics", "-q", "ping"]
             initialDelaySeconds: 60
             periodSeconds: 30
-            timeoutSeconds: 10
+            timeoutSeconds: 15
+            failureThreshold: 3
           resources:
             requests:
               cpu: 250m
               memory: 384Mi
             limits:
-              cpu: 500m
-              memory: 512Mi
+              cpu: 1000m
+              memory: 768Mi
       volumes:
         - name: config
           configMap:
