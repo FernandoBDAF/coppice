@@ -82,7 +82,9 @@ def envelope(routing_key: str, payload: dict) -> dict:
 
 
 def publish(exchange: str, routing_key: str, body: str, expiration_ms: int = 0) -> bool:
-    properties = {"content_type": "application/json"}
+    # delivery_mode 2 = persistent: without it the broker drops these messages
+    # on restart even from durable queues (caught live by EXP-09's exit run).
+    properties = {"content_type": "application/json", "delivery_mode": 2}
     if expiration_ms > 0:
         # AMQP per-message TTL; the value is a string of milliseconds.
         properties["expiration"] = str(expiration_ms)

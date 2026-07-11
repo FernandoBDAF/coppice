@@ -326,6 +326,12 @@ experiment outcome; write it up.
 `documentation/experiments/` — and into CONCEPTUAL_REVIEW if it contradicts
 the design.
 
+> **Answered 2026-07-10** (first exit run): fallback works, 0% errors, but
+> requests silently pay 0.3–4 s dial penalties and only `/ready` reports the
+> outage — see
+> [the write-up](documentation/experiments/2026-07-10-cache-outage-latency-amplification.md).
+> Future runs: treat that behavior as the calibrated Expect.
+
 ---
 
 ## Adding an experiment

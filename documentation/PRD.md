@@ -51,8 +51,8 @@ deployments), **future project owner** (extracts hardened pieces).
   contracts pinned and live-verified.
 - **[EXPERIMENTS.md](../EXPERIMENTS.md):** 12 guided drills with calibrated
   expectations; running the catalog validates the implementation (the method
-  already caught real defects — see phases/v1.1). Owner's full catalog run is
-  the outstanding v1.1 exit.
+  already caught real defects — see phases/v1.1). Exit run done 2026-07-10
+  (`lab-v1.1`): all 12 pass, two more defects caught+fixed by the run itself.
 - Kubernetes: per-service manifests only; the era-1 kind lab restoration is
   v2.
 
@@ -156,8 +156,11 @@ listed under "Parked / rejected" in §8 and inside the relevant ADRs.
 
 ## 11. v1.1 acceptance (current release)
 
-- [ ] **Owner-run validation:** EXPERIMENTS.md top to bottom; every Expect
-      holds or the deviation is written up. Then tag `lab-v1.1`.
+- [x] **Validation run (2026-07-10):** EXPERIMENTS.md top to bottom; all 12
+      pass — EXP-01/EXP-09 after mid-run fixes (RabbitMQ healthcheck,
+      publish.py persistence), EXP-12 discovery documented. See
+      [experiments/2026-07-10-v1.1-catalog-run.md](experiments/2026-07-10-v1.1-catalog-run.md).
+      Tagged `lab-v1.1`.
 - [x] Catalog + enablers shipped and live-verified during development.
 - [x] PRD reflects AWS track, Mission Control, host contract, guest systems.
 - [x] Methodology in place: phases/ briefs + decisions/ ADRs (2026-07-10).
