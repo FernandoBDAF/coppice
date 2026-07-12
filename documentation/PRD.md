@@ -82,7 +82,7 @@ namespace/compose-project per guest + documented port ranges; shared lab
 infra by default with per-guest BYO where production fidelity demands it
 (ADR-007.1/.2).
 
-### 6.2 knowledge-manager (`~/repo/KnowledgeManager`)
+### 6.2 mycelium (formerly KnowledgeManager) (`~/repo/mycelium`)
 YouTube → knowledge-graph pipeline (GraphRAG) + GraphDash/StagesUI front-ends
 + systemic-control. Onboards in v7: **pipeline first**, behind a mandatory
 deterministic fake-LLM mode; **adopts the lab's queue conventions** (the

@@ -9,7 +9,7 @@
 
 ```bash
 # 1. Start the server
-cd /Users/fernandobarroso/repo/KnowledgeManager/GraphRAG
+cd /Users/fernandobarroso/repo/mycelium/GraphRAG
 source .venv/bin/activate
 python -m app.stages_api.server --port 8080
 
@@ -18,7 +18,8 @@ curl http://localhost:8080/api/v1/health
 curl http://localhost:8080/api/v1/stages
 ```
 
-**Frontend UI:** See `/Users/fernandobarroso/repo/KnowledgeManager/StagesUI/`
+**Frontend UI:** See `/Users/fernandobarroso/repo/mycelium/StagesUI/`
+(the mycelium repo was formerly named KnowledgeManager)
 
 ---
 
@@ -150,7 +151,7 @@ curl http://localhost:8080/api/v1/stages
 
 ### Frontend (StagesUI)
 ✅ **Complete** - Fully functional UI
-- Located at `/Users/fernandobarroso/repo/KnowledgeManager/StagesUI/`
+- Located at `/Users/fernandobarroso/repo/mycelium/StagesUI/`
 - See `StagesUI/STAGES_UI_IMPLEMENTATION_GUIDE.md`
 
 ### Integration

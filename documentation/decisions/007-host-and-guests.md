@@ -15,8 +15,8 @@ host-port block (e.g. 41xx hello-guest, 42xx KM, 43xx loam). Written into the
 contract. **Consequences:** no collisions with lab ports; guests invisible to
 each other unless explicitly allowed.
 
-## 007.3 KnowledgeManager: pipeline first, fake-LLM mode required
-**Context:** KM = GraphRAG pipeline + GraphDash/StagesUI + systemic-control;
+## 007.3 mycelium (formerly KnowledgeManager): pipeline first, fake-LLM mode required
+**Context:** KM (mycelium) = GraphRAG pipeline + GraphDash/StagesUI + systemic-control;
 pipeline drills could burn real API credits. **Decision:** onboard the
 ingestion pipeline first, with a mandatory deterministic fake-LLM mode as a
 contract requirement; real-key runs are explicit budgeted experiments; UIs

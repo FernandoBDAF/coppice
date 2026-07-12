@@ -1,4 +1,7 @@
-# Microservices — Consolidated Profile & Document Platform
+# coppice — Consolidated Profile & Document Platform
+
+**coppice** (formerly concept-microservice) — forest floor in the forest-layer
+naming: the ops lab; hosts guest systems, cut back and regrown on purpose.
 
 A profile and document-processing platform built around one consolidated Go API
 service with direct infrastructure access, an independent Node.js auth service,

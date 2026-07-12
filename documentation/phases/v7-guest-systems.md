@@ -1,4 +1,4 @@
-# Phase v7 — Guest systems: KnowledgeManager & loam
+# Phase v7 — Guest systems: mycelium (formerly KnowledgeManager) & loam
 
 **Status:** pending · **Depends on:** v6 (systems model), v5 (AWS sessions) ·
 **Exit tag:** `lab-v7.0` · **Decisions in force:** ADR-007 (all), ADR-005.5,
@@ -8,7 +8,7 @@ ADR-008 (conventions KM adopts), ADR-009.3 (secrets)
 
 The two real systems onboard as guests, each with a **written real-deployment
 plan** (the project's original point: plan how they deploy for real work, and
-rehearse here first). KnowledgeManager's pipeline runs on the lab's queue
+rehearse here first). mycelium's pipeline runs on the lab's queue
 conventions; loam's agent runs execute as Kubernetes Jobs. Both launchable
 from Mission Control, observable in the shared stack, drilled by their own
 experiments.
@@ -17,7 +17,7 @@ experiments.
 
 - **HOST_CONTRACT.md** (v3) proven by hello-guest; systems registry (v6).
   Port blocks: 42xx = KM, 43xx = loam (ADR-007.2).
-- **KnowledgeManager** (`~/repo/KnowledgeManager`): GraphRAG ingestion
+- **mycelium** (`~/repo/mycelium`): GraphRAG ingestion
   pipeline (YouTube → knowledge graphs), GraphDash + StagesUI front-ends,
   systemic-control module; rich observability analyses exist in its docs.
   Decisions: pipeline onboards first with a **mandatory deterministic

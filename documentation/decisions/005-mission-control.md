@@ -3,7 +3,8 @@
 ## 005.1 Build it: Next.js/React
 **Context:** assembling (Backstage/Portainer) is faster to "something" but
 doesn't fit the experiment-library concept; owner has real front-end
-experience (KnowledgeManager's GraphDash/StagesUI). **Decision:** build a
+experience (GraphDash/StagesUI in mycelium, formerly KnowledgeManager).
+**Decision:** build a
 Next.js/React app. **Consequences:** exactly-fitting cockpit + transferable
 UI practice; the v3 thin status page (ADR-001.3) uses this stack to de-risk
 it early.

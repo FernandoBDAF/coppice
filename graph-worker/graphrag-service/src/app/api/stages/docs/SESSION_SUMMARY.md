@@ -122,7 +122,7 @@ app/stages_api/
 
 ```bash
 # Start the API server
-cd /Users/fernandobarroso/repo/KnowledgeManager/GraphRAG
+cd /Users/fernandobarroso/repo/mycelium/GraphRAG
 python -m app.stages_api.server --port 8080
 
 # Test endpoints
