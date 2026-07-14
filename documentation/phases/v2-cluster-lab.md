@@ -42,7 +42,7 @@ consolidated architecture instead of resurrected.
    mine era-1 configs.
 3. **Local registry (ADR-002.3):** registry container at `localhost:5001`
    wired into kind (containerd mirror config); `make images` builds+tags+
-   pushes all 7 images; manifests reference `localhost:5001/...`.
+   pushes all 6 images; manifests reference `localhost:5001/...`.
 4. **Infra in-cluster:** StatefulSets (postgres w/ init SQL ConfigMap, mongo,
    minio, rabbitmq w/ enabled_plugins+conf mounts) + Deployments (redis);
    one-shot migrations as Jobs mirroring compose's api-migrate/auth-migrate;

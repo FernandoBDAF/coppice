@@ -3,8 +3,10 @@
 # phase 3 (OIDC→ECR→EKS) inside v5.
 name: ci
 
+# push is filtered to main so PR commits run once (via pull_request), not twice
 on:
   push:
+    branches: [main]
   pull_request:
 
 jobs:

@@ -391,10 +391,10 @@ infrastructure node), stateless service rescheduling, load continuity.
 4. Drain it: `kubectl drain <node> --ignore-daemonsets
    --delete-emptydir-data` — watch the PDB hold (one api replica keeps
    serving) and pods reschedule to the surviving application node.
-5. Then the blunt version: `docker rm -f <other-app-node-container>` (node
-   *kill*, no grace) — watch NotReady detection (~40s), pod eviction after
-   the 5m default toleration or force-delete, k6 error blip vs the drain's
-   zero blip.
+5. Then the blunt version: `docker stop <other-app-node-container>` (node
+   *kill* from the cluster's view — the kubelet vanishes, nothing drains) —
+   watch NotReady detection (~40s), pod eviction after the 5m default
+   toleration or force-delete, k6 error blip vs the drain's zero blip.
 6. Recover: `docker start` the node container / uncordon the drained one.
 
 **Expect:** the graceful drain loses no requests (PDB + 2 api replicas);
