@@ -26,14 +26,17 @@ ledger of what remains before `lab-v4.0` can be tagged.
 | CI phase 2 proof | `scored-smoke` job only runs on push to `main` — observable after the PR stack merges | .github/workflows/ci.yml |
 | Loadgen live check | 200 msg/s × 30s flood visible in Queue depth panel; confirm-mode throughput delta observable | v4-HANDOFF.md §B4 |
 
-## Reconciliation with v3 (in-flight when this pass ran)
+## Reconciliation with v3 — DONE (2026-07-19)
 
-`phase/v4` was implemented against `phase/v3-observability` as of `741a84f`.
-The parallel v3 session was still landing exit-run fixes. After PR #2
-merges/updates: rebase or merge `phase/v4`, re-run `make verify` +
-`make drift-check`, and re-check the compose/Makefile/CI merge points
-(obs env vars, prometheus config, CI jobs) — v4's edits there were kept
-additive on purpose.
+v3 completed (PR #2: exit runs EXP-30..34 passed, SLOs calibrated) and was
+merged into `phase/v4` the same day (merge commit `30f7914`). Resolutions
+carried on the v4 side: v3's trace_id-in-DLQ-log fix re-applied inside
+v4's rewritten failure paths (`routeFailure` threads the span's trace_id
+into the retry-scheduled and DLQ-routing log lines — the EXP-31 pivot
+holds across retry/DLX routing); `Dockerfile.loadgen` builder bumped to
+golang:1.25-alpine matching v3's toolchain bump; go.mod is the union
+(go 1.25.0 + go-redis). Full battery re-ran green post-merge (verify,
+-race, drift-check, renders, runner gates, acceptance greps).
 
 ## Deviations from the handoff accepted at implementation
 
