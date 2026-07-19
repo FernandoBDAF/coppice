@@ -19,3 +19,4 @@ coverage/
 # compiled binaries
 mission-control/controld/controld
 scripts/obs/ntfy-relay/ntfy-relay
+*.exe

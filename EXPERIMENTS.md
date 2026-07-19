@@ -546,6 +546,12 @@ trace_id correlation between metrics, traces, and logs.
 
 **Expect:** the failing payload reachable in ≤4 UI steps from the panel; the
 trace_id search returns correlated lines from ≥2 services.
+*Calibrated 2026-07-19:* publish.py poison bypasses HTTP, so its trace_ids
+are single-consumer — the validation-error line carries one (step 3 works),
+but the ≥2-service pivot belongs to API-originated traffic (e.g. a
+demo-document trace_id: api-service + graphrag lines in one query). The
+non-JSON flavor has no envelope to take a trace_id from; its path is
+queue+level+DLQ payload.
 
 ---
 

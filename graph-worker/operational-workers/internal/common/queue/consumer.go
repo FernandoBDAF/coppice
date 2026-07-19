@@ -326,7 +326,11 @@ func (c *Consumer) handleDelivery(delivery amqp.Delivery, handler MessageHandler
 		span.RecordError(err)
 		span.SetStatus(codes.Error, "message processing failed")
 		incrementConsumeErrors(c.config.Queue, "handler_error")
-		c.routeFailure(delivery, &msg, err)
+		// trace_id on the failure-path logs preserves the EXP-31 triage
+		// pivot (DLQ panel -> log line -> every log line of the same trace)
+		// across v4's retry/DLX routing. The span is always valid here
+		// (extracted parent or a fresh root).
+		c.routeFailure(delivery, &msg, err, span.SpanContext().TraceID().String())
 		return
 	}
 
@@ -355,12 +359,13 @@ func (c *Consumer) handleDelivery(delivery amqp.Delivery, handler MessageHandler
 // via the DLX, are acked, and emit a "failed" task.result. It never
 // nack-requeues on the normal path; only a publish-infra failure requeues (see
 // requeueOnPublishFailure).
-func (c *Consumer) routeFailure(delivery amqp.Delivery, msg *Message, err error) {
+func (c *Consumer) routeFailure(delivery amqp.Delivery, msg *Message, err error, traceID string) {
 	if classifyOutcome(err, msg.Attempt) == outcomeRetry {
 		tier, _ := NextRetryTier(msg.Attempt)
 		c.logger.Warn("retryable error; scheduling retry",
 			zap.Error(err), zap.String("queue", c.config.Queue),
-			zap.String("message_id", msg.ID), zap.Int("attempt", msg.Attempt), zap.String("tier", tier))
+			zap.String("message_id", msg.ID), zap.Int("attempt", msg.Attempt), zap.String("tier", tier),
+			zap.String("trace_id", traceID))
 
 		exchange := RetryExchange(c.config.Exchange)
 		rk := RetryRoutingKey(c.config.RoutingKey, tier)
@@ -380,11 +385,13 @@ func (c *Consumer) routeFailure(delivery amqp.Delivery, msg *Message, err error)
 	// Terminal: unretryable or exhausted → DLQ.
 	if errors.Is(err, ErrUnretryable) {
 		c.logger.Warn("unretryable error; routing to DLQ",
-			zap.Error(err), zap.String("queue", c.config.Queue), zap.String("message_id", msg.ID))
+			zap.Error(err), zap.String("queue", c.config.Queue), zap.String("message_id", msg.ID),
+			zap.String("trace_id", traceID))
 	} else {
 		c.logger.Warn("retries exhausted; routing to DLQ",
 			zap.Error(err), zap.String("queue", c.config.Queue),
-			zap.String("message_id", msg.ID), zap.Int("attempt", msg.Attempt))
+			zap.String("message_id", msg.ID), zap.Int("attempt", msg.Attempt),
+			zap.String("trace_id", traceID))
 	}
 	if c.deadLetterAndAck(delivery) {
 		// Only a genuine terminal dead-letter yields a "failed" result; a
