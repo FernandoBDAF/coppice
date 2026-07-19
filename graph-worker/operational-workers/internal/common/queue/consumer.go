@@ -331,10 +331,14 @@ func (c *Consumer) handleDelivery(delivery amqp.Delivery, handler MessageHandler
 	if err := handler(ctx, &msg); err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, "message processing failed")
+		// trace_id makes the EXP-31 triage pivot work: DLQ panel -> this
+		// log line -> every other log line of the same trace. The span is
+		// always valid here (extracted parent or a fresh root).
 		c.logger.Error("failed to process message; dropping to DLQ",
 			zap.Error(err),
 			zap.String("queue", c.config.Queue),
-			zap.String("message_id", msg.ID))
+			zap.String("message_id", msg.ID),
+			zap.String("trace_id", span.SpanContext().TraceID().String()))
 		incrementConsumeErrors(c.config.Queue, "handler_error")
 		// No requeue: a message that fails processing is either poison or
 		// will keep failing. Requeueing would spin it forever; the DLQ
