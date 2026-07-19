@@ -1,6 +1,8 @@
 # Phase v8 — Extraction & reuse
 
-**Status:** pending · **Depends on:** v4 (hardened patterns), ideally v7
+**Status:** scaffolds + handoff landed (expedited 2026-07-19; extraction
+itself gated on v4 execution) — execute via [v8-HANDOFF.md](v8-HANDOFF.md)
+· **Depends on:** v4 (hardened patterns), ideally v7
 (patterns proven against real guests) · **Exit tag:** `lab-v8.0` ·
 **Decisions in force:** ADR-010.3 (in-repo templates), ADR-002.1 (the one
 Helm chart), ADR-009 (auth template content), ADR-008 (worker template
