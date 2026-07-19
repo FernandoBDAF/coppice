@@ -1,6 +1,8 @@
 # Phase v4 — Hardening & scored experiments
 
-**Status:** pending · **Depends on:** v3 · **Exit tag:** `lab-v4.0` ·
+**Status:** architecture + skeletons landed (expedited 2026-07-19) —
+execute via [v4-HANDOFF.md](v4-HANDOFF.md) · **Depends on:** v3 ·
+**Exit tag:** `lab-v4.0` ·
 **Decisions in force:** ADR-008 (all), ADR-009.1/.2/.6/.7, ADR-004 (all),
 ADR-010.2 (CI phase 2)
 
