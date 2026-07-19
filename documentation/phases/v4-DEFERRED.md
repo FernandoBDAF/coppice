@@ -10,6 +10,12 @@ and compose ports were in use by the parallel v3 session, and v3's final
 state (PR #2) had not merged when this pass ran. This file is the honest
 ledger of what remains before `lab-v4.0` can be tagged.
 
+**How to run all of this:** the phase doc now carries a step-by-step
+[execution guide](v4-hardening-and-assertions.md#execution-guide--live-run-validation-round)
+(operator + support session protocol, block sequencing, defect handoffs,
+budget/abort criteria). This file remains the checklist; the guide is the
+runbook.
+
 ## Must run before tagging lab-v4.0
 
 | Item | What to do | Doc/entry point |
