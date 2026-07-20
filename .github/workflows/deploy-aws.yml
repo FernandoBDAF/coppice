@@ -1,0 +1,190 @@
+# CI phase 3 (ADR-006.7, ADR-010.2): OIDC → ECR → EKS deploy pipeline.
+# No long-lived AWS keys: the build-push job assumes coppice-lab-deploy
+# (deploy/aws/base/oidc.tf) through GitHub OIDC. EXP-54 proves this path
+# end-to-end (Actions → ECR → apply, laptop-credential-free); `make images`
+# stays the laptop fallback (ADR-006.7).
+#
+# Repo variables required (Settings → Secrets and variables → Actions → Variables):
+#   AWS_DEPLOY_ROLE_ARN  = terraform output oidc_deploy_role_arn (base stack)
+#   AWS_REGION           = the lab region (matches base/session var.aws_region)
+#
+# ROLLBACK (EXP-54 rollback leg): re-run this workflow via "Run workflow" with
+# tag_override set to a previously-built tag (git short SHA or lab-v*) and
+# deploy=true. build-push is SKIPPED on an override run (the image already lives
+# in ECR; ECR repos are MUTABLE, so rebuilding the dispatched ref would clobber
+# the last-good tag) and deploy verifies the tag is present in ECR before it
+# rolls it out — no rebuild of history.
+name: deploy-aws
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag_override:
+        description: "Image tag to deploy (blank = git short SHA of this run). Use a prior tag to roll back."
+        required: false
+        type: string
+        default: ""
+      deploy:
+        description: "Apply to the live session cluster (needs a running cluster + EKS access entry). Default false — sessions are ephemeral."
+        required: false
+        type: boolean
+        default: false
+  push:
+    tags:
+      - "lab-v*"
+
+permissions:
+  contents: read
+
+# Serialize: two deploys must never interleave on the single shared session
+# cluster / ECR namespace. Do NOT cancel in progress — a half-applied rollout
+# is worse than a queued one.
+concurrency:
+  group: deploy-aws
+  cancel-in-progress: false
+
+env:
+  ECR_NAMESPACE: coppice-lab
+
+jobs:
+  # ── build + push all 10 images to ECR (mirrors the Makefile `images` target) ─
+  # SKIPPED when tag_override is set: an override run is a rollback/pin to a tag
+  # already in ECR, and repos are MUTABLE — rebuilding the dispatched ref would
+  # overwrite the last-good image under that tag. deploy still runs (see its if:).
+  build-push:
+    # Run on every non-dispatch trigger (lab-v* tag push), and on a dispatch
+    # only when no tag_override is given. An override dispatch skips this job.
+    # (Event-gated first so we never lean on inputs coercion for push events.)
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.tag_override == '' }}
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write # mint the OIDC token for configure-aws-credentials
+      contents: read
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: resolve image tag
+        id: tag
+        # short SHA is the always-unique default. A lab-v* tag push publishes
+        # under the tag name itself (a durable release handle); tag_override is
+        # only reachable here when empty (the job is skipped otherwise).
+        env:
+          TAG_OVERRIDE: ${{ inputs.tag_override }}
+        run: |
+          set -euo pipefail
+          if [ -n "$TAG_OVERRIDE" ]; then
+            echo "tag=$TAG_OVERRIDE" >> "$GITHUB_OUTPUT"
+          elif [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            echo "tag=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: ECR login
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # Build contexts / dockerfiles / build-args mirror `make images` EXACTLY
+      # (Makefile:109-122). Registry prefix is <ecr>/coppice-lab/<name>:<tag>,
+      # matching the base ECR repo names (deploy/aws/base/main.tf).
+      - name: build + push images
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          R="$REGISTRY/$ECR_NAMESPACE"
+          docker build -t "$R/api-service:$TAG" api-service
+          docker build -t "$R/auth-service:$TAG" auth-service
+          docker build -t "$R/graphrag-service:$TAG" graph-worker/graphrag-service
+          docker build -t "$R/email-worker:$TAG" -f graph-worker/operational-workers/Dockerfile.email graph-worker/operational-workers
+          docker build -t "$R/image-worker:$TAG" -f graph-worker/operational-workers/Dockerfile.image graph-worker/operational-workers
+          docker build -t "$R/profile-worker:$TAG" -f graph-worker/operational-workers/Dockerfile.profile graph-worker/operational-workers
+          docker build -t "$R/loadgen:$TAG" -f graph-worker/operational-workers/Dockerfile.loadgen graph-worker/operational-workers
+          docker build -t "$R/ntfy-relay:$TAG" scripts/obs/ntfy-relay
+          docker build -t "$R/hello-guest-web:$TAG" --build-arg CMD=web guests/hello-guest
+          docker build -t "$R/hello-guest-worker:$TAG" --build-arg CMD=worker guests/hello-guest
+          for i in api-service auth-service graphrag-service email-worker image-worker profile-worker loadgen ntfy-relay hello-guest-web hello-guest-worker; do
+            docker push "$R/$i:$TAG"
+          done
+
+  # ── apply to the live session cluster ───────────────────────────────────────
+  # GATED: only runs on an explicit workflow_dispatch with deploy=true. Sessions
+  # are ephemeral (ADR-006.4) — the cluster usually does not exist, and even when
+  # it does the deploy role must hold an EKS *access entry* on it (granted by the
+  # session stack; see wp4.md). EXP-54 exercises this leg with a live cluster.
+  #
+  # Runs whether build-push succeeded (normal deploy) or was skipped (rollback to
+  # a tag already in ECR); the tag-verify step below is the guard that the tag
+  # actually exists before we roll it out.
+  deploy:
+    needs: build-push
+    if: ${{ !cancelled() && (needs.build-push.result == 'success' || needs.build-push.result == 'skipped') && github.event_name == 'workflow_dispatch' && inputs.deploy }}
+    runs-on: ubuntu-latest
+    environment: aws-lab
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      # On an override run build-push is skipped (no output), so resolve the tag
+      # from the input directly; otherwise take build-push's resolved tag.
+      TAG: ${{ inputs.tag_override != '' && inputs.tag_override || needs.build-push.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      # Guard the rollout: the tag must already exist in ECR for ALL 10 repos.
+      # On a rollback (build-push skipped) this proves the last-good image is
+      # really there; on a normal deploy it catches a partial/failed push.
+      - name: verify images exist in ECR
+        run: |
+          set -euo pipefail
+          missing=()
+          for i in api-service auth-service graphrag-service email-worker image-worker profile-worker loadgen ntfy-relay hello-guest-web hello-guest-worker; do
+            if ! aws ecr describe-images \
+                --repository-name "$ECR_NAMESPACE/$i" \
+                --image-ids imageTag="$TAG" \
+                --region "${{ vars.AWS_REGION }}" >/dev/null 2>&1; then
+              missing+=("$i")
+            fi
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::tag '$TAG' not found in ECR for: ${missing[*]}"
+            echo "Nothing was rolled out. For a rollback, tag_override must name a tag that was actually built+pushed." >&2
+            exit 1
+          fi
+          echo "verified: all 10 repos carry tag '$TAG'"
+
+      - name: kubeconfig
+        # cluster name is coppice-lab (deploy/aws/session/main.tf).
+        # Requires the EKS access entry (session stack) or this fails authz.
+        run: aws eks update-kubeconfig --name coppice-lab --region ${{ vars.AWS_REGION }}
+
+      # Image rollout ONLY — deliberately not a full overlay apply. The full
+      # apply needs terraform outputs (RDS address, IRSA role ARNs, domain)
+      # this role can't read; `make aws-deploy` owns it (laptop, has state).
+      # EXP-54 proves exactly this leg: a commit's images reach EKS through
+      # OIDC→ECR→rollout with no laptop credentials. Rollback re-dispatches with
+      # tag_override=<previous tag>: build-push is skipped, the tag (already in
+      # ECR) is verified above, then rolled out — the bad head is never rebuilt.
+      # Container name == deployment name == image name for all six services.
+      - name: roll images
+        run: |
+          set -euo pipefail
+          ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
+          R="$ACCOUNT.dkr.ecr.${{ vars.AWS_REGION }}.amazonaws.com/$ECR_NAMESPACE"
+          for i in api-service auth-service graphrag-service email-worker image-worker profile-worker; do
+            kubectl -n lab-core set image "deploy/$i" "$i=$R/$i:$TAG"
+          done
+          kubectl -n lab-core rollout status deploy --timeout=300s

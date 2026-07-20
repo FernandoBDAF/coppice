@@ -1,0 +1,26 @@
+# graphrag-service (patch 2): IRSA SA, MinIO env → S3. Like api-service, the S3
+# client now uses IRSA web-identity creds when the static MINIO_ACCESS_KEY/
+# SECRET_KEY are absent, so dropping them below is correct. graphrag has no
+# postgres DSN (mongodb + rabbitmq stay self-hosted), so no RDS/TLS env changes.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: graphrag-service
+  namespace: lab-core
+spec:
+  template:
+    spec:
+      serviceAccountName: graphrag-service
+      containers:
+        - name: graphrag-service
+          env:
+            - name: MINIO_ACCESS_KEY
+              $patch: delete
+            - name: MINIO_SECRET_KEY
+              $patch: delete
+            - name: MINIO_ENDPOINT
+              value: s3.AWS_REGION_PLACEHOLDER.amazonaws.com
+            - name: MINIO_USE_SSL
+              value: "true"
+            - name: AWS_REGION
+              value: AWS_REGION_PLACEHOLDER

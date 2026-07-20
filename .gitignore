@@ -20,3 +20,12 @@ coverage/
 mission-control/controld/controld
 scripts/obs/ntfy-relay/ntfy-relay
 *.exe
+
+# terraform (deploy/aws)
+*.tfstate
+*.tfstate.*
+.terraform/
+# .terraform.lock.hcl is COMMITTED (provider-version reproducibility) — not ignored
+deploy/aws/terraform.tfvars
+deploy/aws/base/reaper/reaper.zip
+deploy/aws/base/ntfy-notifier/ntfy-notifier.zip
