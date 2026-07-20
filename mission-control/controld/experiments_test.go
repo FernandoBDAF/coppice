@@ -160,7 +160,11 @@ func TestCatalogLoadsRealExperiments(t *testing.T) {
 		if a.Type == "http" && a.JSONPath != "" {
 			httpA = a
 		}
-		if a.Type == "promql" && a.Timeout == "300s" {
+		// Select the count(up == 1) assertion by query, not by timeout: exp-01
+		// now carries a second "300s" promql assertion (the consumer-liveness
+		// gate added alongside the graphrag cold-start fix), so timeout alone
+		// is ambiguous.
+		if a.Type == "promql" && a.Query == "count(up == 1)" {
 			promqlA = a
 		}
 	}
@@ -171,7 +175,7 @@ func TestCatalogLoadsRealExperiments(t *testing.T) {
 		t.Errorf("json_path/json_equals = %q/%v, want status/ok", httpA.JSONPath, httpA.JSONEquals)
 	}
 	if promqlA == nil {
-		t.Fatal("exp-01 promql assertion with 300s timeout not found")
+		t.Fatal("exp-01 count(up == 1) promql assertion not found")
 	}
 
 	// JSON round-trip: "300s" stays a string, numeric value stays numeric.
@@ -193,7 +197,7 @@ func TestCatalogLoadsRealExperiments(t *testing.T) {
 			if a.Type == "http" && a.JSONPath != "" {
 				rtHTTP = a
 			}
-			if a.Type == "promql" && a.Timeout == "300s" {
+			if a.Type == "promql" && a.Query == "count(up == 1)" {
 				rtPromql = a
 			}
 		}
@@ -202,7 +206,10 @@ func TestCatalogLoadsRealExperiments(t *testing.T) {
 		t.Errorf("json_equals lost in round-trip: %+v", rtHTTP)
 	}
 	if rtPromql == nil {
-		t.Fatal("300s timeout lost in round-trip")
+		t.Fatal("count(up == 1) promql assertion lost in round-trip")
+	}
+	if rtPromql.Timeout != "300s" {
+		t.Errorf("timeout = %q after round-trip, want \"300s\" (string preserved)", rtPromql.Timeout)
 	}
 	if v, ok := rtPromql.Value.(float64); !ok || v != 8 {
 		t.Errorf("numeric value = %#v (%T) after round-trip, want float64 8", rtPromql.Value, rtPromql.Value)
