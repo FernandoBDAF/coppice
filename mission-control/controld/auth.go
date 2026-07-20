@@ -12,13 +12,18 @@ package main
 // it): remote aws control must never run unauthenticated or in cleartext.
 
 import (
+	"bytes"
+	"context"
 	"crypto/subtle"
 	"errors"
 	"log/slog"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
+	"time"
 )
 
 // Config is the runtime configuration the engine and auth gate consult. It is
@@ -108,15 +113,108 @@ func bearerToken(r *http.Request) string {
 	return ""
 }
 
-// AWSTargetEntry is the /api/targets row for the aws target when it is
-// enabled. main.go owns /api/targets; the orchestrator appends this entry to
-// its response when cfg.EnableAWS (see INTEGRATION-NOTES-A.md). It is a map
-// rather than the main.go Target struct so it can carry the extra "note"
-// field without altering that read-only type.
-func AWSTargetEntry() map[string]any {
-	return map[string]any{
-		"name":      "aws",
-		"available": false,
-		"note":      "session check pending v5 integration",
+// AWSTargetEntry is the /api/targets row for the aws target when it is enabled.
+// main.go owns /api/targets; the orchestrator appends this entry to its response
+// when cfg.EnableAWS (see INTEGRATION-NOTES-A.md). It is a map rather than the
+// main.go Target struct so it can carry the extra "note" field without altering
+// that read-only type.
+//
+// Availability is a cheap read-only probe (v6-HANDOFF §4): the aws target is
+// "available" only when a terraform session is up. The probe result is cached
+// for awsProbeTTL so a flurry of /api/targets polls does not shell out on every
+// request. A probe failure is NEVER surfaced as an error to the client — it is
+// reported as {available:false, note:<short reason>}. The JSON shape stays
+// exactly {"name","available","note"} — the UI depends on it.
+func AWSTargetEntry(cfg Config) map[string]any {
+	awsProbe.mu.Lock()
+	defer awsProbe.mu.Unlock()
+	if awsProbe.entry != nil && time.Since(awsProbe.at) < awsProbeTTL {
+		return awsProbe.entry
 	}
+	entry := probeAWS(cfg)
+	awsProbe.entry = entry
+	awsProbe.at = time.Now()
+	return entry
+}
+
+// awsProbeTTL bounds how long a probe result is reused.
+const awsProbeTTL = 60 * time.Second
+
+// awsProbe caches the last availability probe. The zero value is a cold cache.
+var awsProbe struct {
+	mu    sync.Mutex
+	entry map[string]any
+	at    time.Time
+}
+
+// awsProbeRun runs the read-only session probe. It is a package-level var so
+// tests can inject a fake without a terraform binary or live AWS. It returns the
+// raw stdout (the cluster name) and an error (with a short, honest message).
+var awsProbeRun = func(ctx context.Context, repoRoot string) (string, error) {
+	cmd := exec.CommandContext(ctx, "terraform", "-chdir=deploy/aws/session", "output", "-raw", "cluster_name")
+	cmd.Dir = repoRoot
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	if err != nil {
+		if msg := firstLine(stderr.String()); msg != "" {
+			return "", errors.New(msg)
+		}
+		return "", err
+	}
+	return string(out), nil
+}
+
+// probeAWS runs (once) the terraform session probe with a 10s budget and maps
+// the outcome to the /api/targets entry. Exit 0 + non-empty output → available;
+// anything else → unavailable with a short reason.
+func probeAWS(cfg Config) map[string]any {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	out, err := awsProbeRun(ctx, cfg.RepoRoot)
+	if err != nil {
+		return awsEntry(false, "session down: "+short(err.Error()))
+	}
+	name := strings.TrimSpace(out)
+	if name == "" {
+		return awsEntry(false, "session down: no cluster_name output")
+	}
+	return awsEntry(true, "session up: cluster "+name)
+}
+
+// awsEntry builds the fixed {"name","available","note"} shape.
+func awsEntry(available bool, note string) map[string]any {
+	return map[string]any{"name": "aws", "available": available, "note": note}
+}
+
+// resetAWSProbeCache clears the cached probe result (used by tests).
+func resetAWSProbeCache() {
+	awsProbe.mu.Lock()
+	defer awsProbe.mu.Unlock()
+	awsProbe.entry = nil
+	awsProbe.at = time.Time{}
+}
+
+// firstLine returns the first non-empty trimmed line of s.
+func firstLine(s string) string {
+	for _, line := range strings.Split(s, "\n") {
+		if t := strings.TrimSpace(line); t != "" {
+			return t
+		}
+	}
+	return ""
+}
+
+// short trims and caps a reason string so the note stays terse.
+func short(s string) string {
+	s = strings.TrimSpace(s)
+	const max = 140
+	if len(s) > max {
+		return s[:max-1] + "…"
+	}
+	if s == "" {
+		return "unavailable"
+	}
+	return s
 }

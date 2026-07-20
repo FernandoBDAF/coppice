@@ -105,6 +105,7 @@ type server struct {
 	http *http.Client
 
 	enableAWS bool
+	cfg       Config
 
 	mu            sync.Mutex
 	targetsCache  []Target
@@ -150,6 +151,7 @@ func main() {
 
 	s := newServer(log)
 	s.enableAWS = cfg.EnableAWS
+	s.cfg = cfg
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
@@ -260,8 +262,8 @@ func (s *server) handleTargets(w http.ResponseWriter, r *http.Request) {
 }
 
 // writeTargets responds with the probed targets, appending the aws
-// pseudo-row (a map, so it can carry `note`) when the aws target is enabled —
-// its availability probe stays stubbed until the v5 session semantics land.
+// pseudo-row (a map, so it can carry `note`) when the aws target is enabled.
+// Availability comes from the live terraform session probe (auth.go).
 func (s *server) writeTargets(w http.ResponseWriter, targets []Target) {
 	if !s.enableAWS {
 		writeJSON(w, http.StatusOK, targets)
@@ -271,7 +273,7 @@ func (s *server) writeTargets(w http.ResponseWriter, targets []Target) {
 	for _, t := range targets {
 		out = append(out, t)
 	}
-	out = append(out, AWSTargetEntry())
+	out = append(out, AWSTargetEntry(s.cfg))
 	writeJSON(w, http.StatusOK, out)
 }
 

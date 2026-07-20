@@ -29,6 +29,10 @@ type Store struct {
 
 func NewStore(dir string) *Store { return &Store{dir: dir} }
 
+// Dir returns the run-history directory. Per-action scored-run report subdirs
+// (reports/<action-id>/) live under it — inside the gitignored runs/ tree.
+func (s *Store) Dir() string { return s.dir }
+
 // Append writes one JSON line for a completed record into the day file keyed
 // by its StartedAt (UTC) date. The runs/ dir is created on demand (0755).
 func (s *Store) Append(rec ActionRecord) error {

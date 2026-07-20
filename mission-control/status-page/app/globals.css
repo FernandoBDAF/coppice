@@ -834,6 +834,94 @@ button:focus-visible {
   margin-top: 4px;
 }
 
+/* ---- scored-experiment report panel ---- */
+
+.report-panel {
+  border: 1px solid var(--border-strong);
+  border-left-width: 3px;
+  background: var(--bg);
+  padding: 12px;
+  margin-bottom: 12px;
+}
+
+.report-panel.ok {
+  border-left-color: var(--green);
+}
+
+.report-panel.bad {
+  border-left-color: var(--red);
+  background: rgba(120, 40, 40, 0.1);
+}
+
+.report-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.report-summary {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.report-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.report-item {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 8px;
+  padding-top: 8px;
+  border-top: 1px dotted var(--border);
+}
+
+.report-item:first-child {
+  padding-top: 0;
+  border-top: none;
+}
+
+.report-marker {
+  font-weight: 700;
+}
+
+.report-item.ok .report-marker {
+  color: var(--green);
+}
+
+.report-item.bad .report-marker {
+  color: var(--red);
+}
+
+.report-name {
+  font-weight: 700;
+  word-break: break-word;
+}
+
+.report-item.bad .report-name {
+  color: var(--red);
+}
+
+.report-detail {
+  grid-column: 2;
+  margin: 2px 0 0;
+  padding: 6px 8px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--dim);
+  font-size: 11px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-x: auto;
+}
+
 /* ---- experiment detail ---- */
 
 .detail-block {

@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -109,6 +111,110 @@ func TestCatalogListValidSortedWithFiles(t *testing.T) {
 	if exp.Assertions[1].Status != 200 {
 		t.Errorf("assertion[1].status = %d, want 200", exp.Assertions[1].Status)
 	}
+}
+
+// TestCatalogLoadsRealExperiments loads the repo's real experiments/ dir and
+// asserts all 12 exp-*.yaml parse cleanly (no skips, no warnings), that the
+// http-assertion fields json_path/json_equals are captured, and that "300s"
+// timeouts and numeric values survive a JSON round-trip.
+func TestCatalogLoadsRealExperiments(t *testing.T) {
+	root, err := filepath.Abs("../..")
+	if err != nil {
+		t.Fatalf("abs repo root: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "experiments")); err != nil {
+		t.Skipf("real experiments dir not present: %v", err)
+	}
+
+	// A buffer logger so any warn/skip line (malformed / missing id-title) fails
+	// the test — valid files must load silently.
+	var logbuf bytes.Buffer
+	log := slog.New(slog.NewTextHandler(&logbuf, &slog.HandlerOptions{Level: slog.LevelWarn}))
+
+	c := NewCatalog(Config{RepoRoot: root}, nil, log)
+	got, err := c.load()
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if len(got) != 12 {
+		t.Fatalf("loaded %d experiments, want 12", len(got))
+	}
+	if s := strings.TrimSpace(logbuf.String()); s != "" {
+		t.Fatalf("expected no warn/skip lines, got:\n%s", s)
+	}
+
+	// Locate exp-01, which uses an http assertion with json_path/json_equals and
+	// a promql assertion with a numeric value + "300s" timeout.
+	byID := map[string]Experiment{}
+	for _, e := range got {
+		byID[e.ID] = e
+	}
+	exp01, ok := byID["exp-01"]
+	if !ok {
+		t.Fatalf("exp-01 missing from catalog; ids=%v", keysOf(byID))
+	}
+
+	var httpA, promqlA *ExpAssertion
+	for i := range exp01.Assertions {
+		a := &exp01.Assertions[i]
+		if a.Type == "http" && a.JSONPath != "" {
+			httpA = a
+		}
+		if a.Type == "promql" && a.Timeout == "300s" {
+			promqlA = a
+		}
+	}
+	if httpA == nil {
+		t.Fatal("exp-01 http assertion with json_path not captured (struct field missing?)")
+	}
+	if httpA.JSONPath != "status" || httpA.JSONEquals != "ok" {
+		t.Errorf("json_path/json_equals = %q/%v, want status/ok", httpA.JSONPath, httpA.JSONEquals)
+	}
+	if promqlA == nil {
+		t.Fatal("exp-01 promql assertion with 300s timeout not found")
+	}
+
+	// JSON round-trip: "300s" stays a string, numeric value stays numeric.
+	blob, err := json.Marshal(got)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var back []Experiment
+	if err := json.Unmarshal(blob, &back); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	var rtHTTP, rtPromql *ExpAssertion
+	for i := range back {
+		if back[i].ID != "exp-01" {
+			continue
+		}
+		for j := range back[i].Assertions {
+			a := &back[i].Assertions[j]
+			if a.Type == "http" && a.JSONPath != "" {
+				rtHTTP = a
+			}
+			if a.Type == "promql" && a.Timeout == "300s" {
+				rtPromql = a
+			}
+		}
+	}
+	if rtHTTP == nil || rtHTTP.JSONEquals != "ok" {
+		t.Errorf("json_equals lost in round-trip: %+v", rtHTTP)
+	}
+	if rtPromql == nil {
+		t.Fatal("300s timeout lost in round-trip")
+	}
+	if v, ok := rtPromql.Value.(float64); !ok || v != 8 {
+		t.Errorf("numeric value = %#v (%T) after round-trip, want float64 8", rtPromql.Value, rtPromql.Value)
+	}
+}
+
+func keysOf(m map[string]Experiment) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
 }
 
 func TestCatalogListSorted(t *testing.T) {

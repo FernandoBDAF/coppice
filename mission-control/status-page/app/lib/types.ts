@@ -100,6 +100,21 @@ export interface ActionRequest {
 
 export type ActionState = "pending" | "running" | "succeeded" | "failed";
 
+// ---- scored-experiment report (present only on completed scored runs) ----
+
+export interface AssertionResult {
+  name: string;
+  passed: boolean;
+  detail?: string;
+}
+
+export interface ExperimentReport {
+  passed: boolean; // overall
+  total: number; // total assertions
+  failed: number;
+  assertions: AssertionResult[];
+}
+
 export interface ActionRecord {
   id: string;
   request: ActionRequest;
@@ -108,6 +123,9 @@ export interface ActionRecord {
   exit_code?: number;
   started_at: string;
   ended_at?: string;
+  // Present only on completed scored experiment runs; absent for older runs,
+  // non-experiment verbs, or a runner that crashed before writing a report.
+  report?: ExperimentReport;
 }
 
 // ---- experiments (/api/experiments) ----

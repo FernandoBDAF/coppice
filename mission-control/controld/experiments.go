@@ -58,13 +58,19 @@ type ExpStep struct {
 // ExpAssertion is one polled assertion. `value` may be int or float in YAML;
 // decoding into `any` keeps it numeric on the way back out to JSON.
 type ExpAssertion struct {
-	Type    string `json:"type" yaml:"type"`
-	Query   string `json:"query,omitempty" yaml:"query"`
-	Op      string `json:"op,omitempty" yaml:"op"`
-	Value   any    `json:"value,omitempty" yaml:"value"`
-	URL     string `json:"url,omitempty" yaml:"url"`
-	Status  int    `json:"status,omitempty" yaml:"status"`
-	Run     string `json:"run,omitempty" yaml:"run"`
+	Type string `json:"type" yaml:"type"`
+	// promql
+	Query string `json:"query,omitempty" yaml:"query"`
+	Op    string `json:"op,omitempty" yaml:"op"`
+	Value any    `json:"value,omitempty" yaml:"value"`
+	// http
+	URL        string `json:"url,omitempty" yaml:"url"`
+	Status     int    `json:"status,omitempty" yaml:"status"`
+	JSONPath   string `json:"json_path,omitempty" yaml:"json_path"`
+	JSONEquals any    `json:"json_equals,omitempty" yaml:"json_equals"`
+	// cli
+	Run string `json:"run,omitempty" yaml:"run"`
+	// all assertions
 	Timeout string `json:"timeout" yaml:"timeout"`
 }
 

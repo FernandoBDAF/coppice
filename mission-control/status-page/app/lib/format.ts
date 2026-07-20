@@ -4,6 +4,7 @@
 import type {
   ActionState,
   ComposeService,
+  ExperimentReport,
   KindWorkload,
   SystemDef,
   TargetName,
@@ -47,6 +48,22 @@ export function actionStateClass(state: ActionState): string {
 
 export function serviceLabel(s: ComposeService): string {
   return `${s.state}/${s.health}`;
+}
+
+// ---- scored-experiment report presentation ----
+
+function reportPassed(r: ExperimentReport): number {
+  return Math.max(0, r.total - r.failed);
+}
+
+// Long form for the modal panel, e.g. "5/6 assertions passed".
+export function reportSummary(r: ExperimentReport): string {
+  return `${reportPassed(r)}/${r.total} assertions passed`;
+}
+
+// Compact form for the history row badge, e.g. "4/4 ✓" or "3/5 ✗".
+export function reportBadge(r: ExperimentReport): string {
+  return `${reportPassed(r)}/${r.total} ${r.passed ? "✓" : "✗"}`;
 }
 
 export function fmtClock(iso?: string): string {

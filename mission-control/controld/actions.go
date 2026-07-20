@@ -70,6 +70,12 @@ type ActionRecord struct {
 	ExitCode  *int          `json:"exit_code,omitempty"`
 	StartedAt time.Time     `json:"started_at"`
 	EndedAt   *time.Time    `json:"ended_at,omitempty"`
+
+	// Report is the parsed scored-run report for experiment verbs (nil for
+	// other verbs, or when the runner emitted no parseable XML). Its presence
+	// never changes the action's exit-code-driven pass/fail — it is an
+	// enrichment attached in the engine just before finalize (report.go).
+	Report *ExperimentReport `json:"report,omitempty"`
 }
 
 // experimentIDRe bounds the only free-form value that ever reaches the shell

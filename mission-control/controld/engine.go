@@ -173,6 +173,23 @@ func (e *Engine) execute(st *actionState, key string) {
 		return nil
 	}
 
+	// For experiment runs, point the scored runner at a per-action report dir
+	// (under the gitignored runs/ tree) so its junit-ish XML can be attached to
+	// the record after the process exits. Other verbs inherit the environment
+	// untouched. A dir-creation failure degrades to no-report (warn), never a
+	// hard failure of the action.
+	reportDir := ""
+	if req.Verb == "experiment" {
+		if d := reportDirFor(e.store, st.rec.ID); d != "" {
+			if err := os.MkdirAll(d, 0o755); err != nil {
+				e.log.Warn("experiment report dir unavailable", "id", st.rec.ID, "error", err.Error())
+			} else {
+				reportDir = d
+				c.Env = append(os.Environ(), "EXPERIMENT_REPORT_DIR="+d)
+			}
+		}
+	}
+
 	pr, pw, err := os.Pipe()
 	if err != nil {
 		e.finalize(st, key, "failed", -1, fmt.Sprintf(startupErrMark, err))
@@ -219,6 +236,20 @@ func (e *Engine) execute(st *actionState, key string) {
 	if marker != "" {
 		st.broker.publish(marker)
 	}
+
+	// Attach the scored-run report (if any) BEFORE finalize snapshots the
+	// record, so it lands in both the JSONL persistence and the GET response.
+	// Lenient: no dir / no xml / parse error → Report stays nil + a warn.
+	if reportDir != "" {
+		if rep, rerr := parseExperimentReport(reportDir); rerr != nil {
+			e.log.Warn("experiment report not attached", "id", st.rec.ID, "error", rerr.Error())
+		} else {
+			st.mu.Lock()
+			st.rec.Report = rep
+			st.mu.Unlock()
+		}
+	}
+
 	e.finalize(st, key, state, exit, "")
 }
 

@@ -22,29 +22,31 @@ file is the honest ledger of what remains before `lab-v6.0` can be tagged.
 | "Every action delegates to make" spot-check | Drive a handful of UI actions, read `mission-control/controld/runs/YYYY-MM-DD.jsonl` | Every `ActionRecord.command` is a `make …` (or registry) invocation — no hidden shell (phase-doc acceptance) |
 | hello-guest launchable from the UI | Launch hello-guest from its system card via its `systems/hello-guest.yaml` entry | Guest comes up on the target; proves the v7-readiness of the systems model (phase-doc acceptance) |
 
-## Seams on parallel work (reconcile before the runs are meaningful)
+## Seams on parallel work — reconciled 2026-07-19
 
-These are honest dependencies on work that lives on other branches; they are
-not defects. `phase/v6` does not yet carry the v4 execution (merged to main,
-not into this stack) nor the v5 execution (on `phase/v5`, being finished in a
-parallel session).
+The v5 execution (which carries v4-final) was merged into this branch
+(`Merge phase/v5`), closing the two seams the first pass had to stub:
 
-- **Scored runs surface as a failed action today — by design (v6-HANDOFF
-  §3).** On this branch `scripts/experiments/run.py` is still the v4 skeleton
-  (exits 3) and only `experiments/exp-02.yaml` exists. So a scored run from
-  the UI runs `make experiment E=exp-02`, the runner exits non-zero, and the
-  action honestly reports `state:failed` — the control path is proven even
-  though the runner isn't. Real pass/fail and the RUNS.md / junit parsing that
-  attaches per-assertion results to the `ActionRecord` light up when the stack
-  reconciles with the v4 runner. **Check:** after reconcile, EXP-62's UI
-  result == CLI result for a passing id.
-- **AWS target is probe-stubbed.** `make aws-*` targets exist in
-  `systems/lab.yaml`, but the availability probe returns
-  `available:false` with the note "session check pending v5 integration"; the
-  aws chip is present-but-disabled in the UI. Live aws parity (EXP-61's aws
-  leg) and a live token+TLS drill against a real session are deferred to the
-  v5 reconciliation round. **Check:** with v5 merged and a session up, the aws
-  chip enables and shows correct state.
+- **Scored runs now attach real per-assertion results.** The real runner
+  (`scripts/experiments/run.py`, ADR-004.1) is on this branch with all 12
+  `experiments/*.yaml`. For `verb:experiment` actions controld sets
+  `EXPERIMENT_REPORT_DIR` to a per-action dir under `runs/reports/` and, on
+  completion, parses the runner's junit XML into `ActionRecord.report`
+  (`{passed,total,failed,assertions[]}`); the UI renders the breakdown in the
+  action modal, library result, and a compact history badge. Pass/fail stays
+  exit-code driven; a missing/unparseable report degrades to no breakdown,
+  never a fake result. **Remaining check:** EXP-62's UI result == CLI result
+  for a passing id, on a live stack.
+- **AWS availability is a live probe.** `AWSTargetEntry(cfg)` runs read-only
+  `terraform -chdir=deploy/aws/session output -raw cluster_name` (10s timeout,
+  60s cache) — session up → the aws chip enables with the cluster name; any
+  failure (no terraform, no init, no state) → disabled with the honest reason.
+  Live aws parity (EXP-61's aws leg) and a token+TLS drill against a real
+  session still need a real session up.
+- **The PR #15 graphrag hotfix is on `main` but not yet in this stack**
+  (it landed after `phase/v5`'s v4-final merge). EXP-01's cold start can
+  crash-loop graphrag without it; reconcile `main` bottom-up (or rebase the
+  stack) before scoring EXP-01 from the UI.
 - **hello-guest cards read "unknown".** The read API tracks only the lab; a
   guest card shows state `unknown` until you run its `status` verb as an
   on-demand action ("Check status"). **Check:** the status action returns the

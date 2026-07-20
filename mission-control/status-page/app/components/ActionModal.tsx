@@ -7,9 +7,13 @@
 // that record is still running).
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ApiError, postJSON, streamUrl } from "../lib/api";
-import { actionStateClass, previewCommand } from "../lib/format";
-import type { ActionRecord, ActionState } from "../lib/types";
+import { ApiError, getJSON, postJSON, streamUrl } from "../lib/api";
+import { actionStateClass, previewCommand, reportSummary } from "../lib/format";
+import type {
+  ActionRecord,
+  ActionState,
+  ExperimentReport,
+} from "../lib/types";
 import { useCockpit, type ActionModalMode } from "../lib/store";
 
 const MAX_LINES = 2000;
@@ -64,6 +68,12 @@ export function ActionModal({
   );
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [streamError, setStreamError] = useState<string | null>(null);
+  // Scored-experiment report: present up-front when reopening a completed
+  // record; for a fresh launch it is fetched once the run ends (the SSE end
+  // event carries only state + exit_code).
+  const [report, setReport] = useState<ExperimentReport | null>(
+    mode.kind === "open" ? mode.record.report ?? null : null
+  );
 
   const esRef = useRef<EventSource | null>(null);
   const outRef = useRef<HTMLPreElement | null>(null);
@@ -75,6 +85,22 @@ export function ActionModal({
       next.push(line);
       return next;
     });
+  }, []);
+
+  // Best-effort: pull the just-completed record to surface its scored-run
+  // report (assertion breakdown). The engine attaches the report before the
+  // SSE end event fires, so a direct GET here is race-free. Absence is
+  // normal — non-experiment verbs and older runs carry no report — so
+  // failures stay silent.
+  const fetchReport = useCallback(async (id: string) => {
+    try {
+      const rec = await getJSON<ActionRecord>(
+        `/api/actions/${encodeURIComponent(id)}`
+      );
+      if (rec.report) setReport(rec.report);
+    } catch {
+      /* report is optional; leave it unset */
+    }
   }, []);
 
   const startStream = useCallback(
@@ -97,6 +123,7 @@ export function ActionModal({
         es.close();
         esRef.current = null;
         bumpRuns();
+        void fetchReport(id);
       });
       es.onerror = () => {
         // EventSource auto-reconnects; close to avoid a storm and surface a
@@ -109,7 +136,7 @@ export function ActionModal({
         }
       };
     },
-    [appendLine, bumpRuns]
+    [appendLine, bumpRuns, fetchReport]
   );
 
   const doPost = useCallback(async () => {
@@ -230,6 +257,39 @@ export function ActionModal({
               <span className="cmd-note">preview</span>
             )}
           </div>
+
+          {report && (
+            <div
+              className={`report-panel ${report.passed ? "ok" : "bad"}`}
+              role="group"
+              aria-label="assertion results"
+            >
+              <div className="report-head">
+                <span className={`badge ${report.passed ? "ok" : "bad"}`}>
+                  {report.passed ? "PASS" : "FAIL"}
+                </span>
+                <span className="report-summary">{reportSummary(report)}</span>
+              </div>
+              {report.assertions.length > 0 && (
+                <ul className="report-list">
+                  {report.assertions.map((a, i) => (
+                    <li
+                      key={i}
+                      className={`report-item ${a.passed ? "ok" : "bad"}`}
+                    >
+                      <span className="report-marker" aria-hidden="true">
+                        {a.passed ? "✓" : "✗"}
+                      </span>
+                      <span className="report-name">{a.name}</span>
+                      {a.detail && (
+                        <pre className="report-detail">{a.detail}</pre>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
 
           {phase === "confirm" && (
             <div className="confirm-box">

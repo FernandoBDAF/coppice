@@ -1,8 +1,10 @@
 "use client";
 
-// Cockpit header: title, live target switcher (chips from /api/targets —
-// unavailable targets are disabled with their note as a tooltip), the session
-// bar, and the settings popover.
+// Cockpit header: title, live target switcher (chips from /api/targets — an
+// available target is selectable, an unavailable one is disabled; either way
+// its note, when present, shows as a tooltip — for aws this is a live probe
+// note explaining the session is up or WHY it isn't), the session bar, and the
+// settings popover.
 
 import type { Target, TargetName } from "../lib/types";
 import { SessionBar } from "./SessionBar";
@@ -48,6 +50,11 @@ export function Header({
           targets.map((t) => {
             const active = t.name === target;
             const disabled = !t.available;
+            // Show the note as a tooltip whenever the probe supplies one — in
+            // both states — falling back to a generic reason only when a
+            // disabled target reports no note.
+            const title =
+              t.note ?? (disabled ? `${t.name} target not available` : undefined);
             return (
               <button
                 key={t.name}
@@ -55,11 +62,7 @@ export function Header({
                   disabled ? " down" : ""
                 }`}
                 disabled={disabled}
-                title={
-                  disabled
-                    ? t.note ?? `${t.name} target not available`
-                    : undefined
-                }
+                title={title}
                 onClick={() => !disabled && onSelectTarget(t.name)}
               >
                 {t.name}

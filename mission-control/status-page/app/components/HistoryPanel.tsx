@@ -6,7 +6,12 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { getJSON } from "../lib/api";
-import { actionStateClass, fmtClock, fmtDuration } from "../lib/format";
+import {
+  actionStateClass,
+  fmtClock,
+  fmtDuration,
+  reportBadge,
+} from "../lib/format";
 import type { ActionRecord } from "../lib/types";
 import { useCockpit } from "../lib/store";
 
@@ -68,6 +73,7 @@ export function HistoryPanel() {
                     <th>system/target/verb</th>
                     <th>command</th>
                     <th>state</th>
+                    <th>report</th>
                     <th>dur</th>
                   </tr>
                 </thead>
@@ -90,6 +96,19 @@ export function HistoryPanel() {
                           {r.state.toUpperCase()}
                           {r.exit_code !== undefined ? ` ${r.exit_code}` : ""}
                         </span>
+                      </td>
+                      <td>
+                        {r.report ? (
+                          <span
+                            className={`badge ${
+                              r.report.passed ? "ok" : "bad"
+                            }`}
+                          >
+                            {reportBadge(r.report)}
+                          </span>
+                        ) : (
+                          <span className="prompt-meta">—</span>
+                        )}
                       </td>
                       <td>{fmtDuration(r.started_at, r.ended_at)}</td>
                     </tr>
