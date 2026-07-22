@@ -1,0 +1,94 @@
+# mycelium stages-api — the stages surface of mycelium's consolidated FastAPI
+# service, bound on :8080 (recon 2026-07-20, mycelium@06d2651). Single port
+# serves the app + /metrics (Prometheus text, scraped via the ServiceMonitor in
+# ../obs) — /metrics already exists. /health already exists on the FastAPI
+# service; a dedicated /ready is the genuine KM-2 gap (readiness falls back to
+# /health until then). In reality stages (:8080) and graph (:8081) are ONE
+# FastAPI process; modeled as two logical surfaces here.
+apiVersion: v1
+kind: Service
+metadata:
+  name: mycelium-stages-api
+  namespace: mycelium
+  labels:
+    app: mycelium-stages-api
+    lab.local/guest: mycelium
+spec:
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+  selector:
+    app: mycelium-stages-api
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mycelium-stages-api
+  namespace: mycelium
+  labels:
+    app: mycelium-stages-api
+    lab.local/guest: mycelium
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mycelium-stages-api
+  template:
+    metadata:
+      labels:
+        app: mycelium-stages-api
+        lab.local/guest: mycelium
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+    spec:
+      securityContext:
+        runAsNonRoot: true
+      containers:
+        - name: stages-api
+          image: localhost:5001/mycelium-stages-api:dev
+          imagePullPolicy: Always
+          env:
+            # TARGET env for the KM-1 deterministic fake mode (ADR-007.3) —
+            # UNBUILT today: mycelium has no LLM_MODE var and real runs require
+            # OPENAI_API_KEY/VOYAGE_API_KEY. The netpol has NO egress to
+            # api.openai.com / api.voyageai.com, which is the structural
+            # spend-proof by absence (EXP-70) regardless of this env; a working
+            # fake mode is greenfield (KM-1).
+            - name: LLM_MODE
+              value: fake
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          ports:
+            - name: http
+              containerPort: 8080
+          # /health exists on the FastAPI service (recon); a dedicated /ready is
+          # the KM-2 gap — readiness uses /health until it lands.
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 2
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 5
+          resources:
+            requests:
+              cpu: 50m
+              memory: 96Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi

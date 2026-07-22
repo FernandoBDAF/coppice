@@ -1,0 +1,50 @@
+# api-service (patches 2 + 3): IRSA SA, MinIO env → S3, DSN host → RDS.
+#
+# S3 auth under IRSA: this branch's storage client uses the minio-go IRSA
+# web-identity provider (credentials.NewIAM("")) / AWS default chain when the
+# static MINIO_ACCESS_KEY/SECRET_KEY are absent, and config.Validate() no longer
+# requires those keys once minio.endpoint is set — so dropping the static creds
+# below is correct and S3 calls authenticate via the api-service IRSA role.
+#
+# DSN ordering: POSTGRES_PASSWORD is restated FIRST below so it precedes
+# API_POSTGRES_DSN in the rendered container env. Kubernetes `$(VAR)`
+# substitution only expands vars defined EARLIER in the list; without this the
+# DSN would ship the literal string $(POSTGRES_PASSWORD) and RDS auth would fail.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-service
+  namespace: lab-core
+spec:
+  template:
+    spec:
+      serviceAccountName: api-service
+      containers:
+        - name: api-service
+          env:
+            # POSTGRES_PASSWORD restated FIRST so it precedes API_POSTGRES_DSN in
+            # the rendered env — $(VAR) expands only previously-defined vars.
+            # secretKeyRef copied verbatim from the base deployment.
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: POSTGRES_PASSWORD
+            # static MinIO creds removed — IRSA supplies S3 credentials
+            - name: MINIO_ACCESS_KEY
+              $patch: delete
+            - name: MINIO_SECRET_KEY
+              $patch: delete
+            # point the S3-API client at real S3 (regional endpoint, TLS on)
+            - name: MINIO_ENDPOINT
+              value: s3.AWS_REGION_PLACEHOLDER.amazonaws.com
+            - name: MINIO_USE_SSL
+              value: "true"
+            - name: MINIO_BUCKET_NAME
+              value: S3_BUCKET_PLACEHOLDER
+            - name: AWS_REGION
+              value: AWS_REGION_PLACEHOLDER
+            # DSN password still injected from the postgres-credentials Secret
+            # (now an ExternalSecret); only the host moves to RDS + TLS.
+            - name: API_POSTGRES_DSN
+              value: postgres://postgres:$(POSTGRES_PASSWORD)@RDS_ADDRESS_PLACEHOLDER:5432/api_db?sslmode=require

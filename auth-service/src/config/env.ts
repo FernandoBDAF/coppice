@@ -23,9 +23,21 @@ const envSchema = z.object({
   DATABASE_PASSWORD: z.string().min(1),
   DATABASE_POOL_MAX: z.coerce.number().default(20),
   DATABASE_SSL: booleanEnv(false),
+  // Filesystem path to a PEM CA bundle used to verify the DB server cert when
+  // DATABASE_SSL=true (e.g. the vendored RDS global bundle mounted by the aws
+  // overlay at /etc/rds-ca/global-bundle.pem). Unset → TLS is enabled but the
+  // server cert is NOT verified (see config/index.ts resolveDatabaseSsl).
+  DATABASE_SSL_CA: z.string().optional(),
   JWT_SECRET: z.string().min(32),
   JWT_ACCESS_TOKEN_EXPIRY: z.string().default("15m"),
   JWT_REFRESH_TOKEN_EXPIRY: z.string().default("7d"),
+  // RS256 + JWKS (ADR-009.1). Keys arrive base64(PEM) single-line; a value that
+  // already starts with "-----" is treated as raw PEM (k8s may inject raw). The
+  // config loader decodes both. Algorithm defaults to RS256 when both keys are
+  // present, else HS256 (keyless fallback stays working for compose/CI).
+  JWT_PRIVATE_KEY: z.string().optional(),
+  JWT_PUBLIC_KEY: z.string().optional(),
+  JWT_ALGORITHM: z.enum(["RS256", "HS256"]).optional(),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().default(900000),
   RATE_LIMIT_MAX_REQUESTS: z.coerce.number().default(100),
   // /v1/auth/token/validate is called by api-service once per authenticated
@@ -34,6 +46,10 @@ const envSchema = z.object({
   ACCOUNT_LOCKOUT_ATTEMPTS: z.coerce.number().default(5),
   ACCOUNT_LOCKOUT_DURATION_MS: z.coerce.number().default(1800000),
   PASSWORD_MIN_LENGTH: z.coerce.number().default(8),
+  // Env-driven admin bootstrap (ADR-009.7). When both are set and the user is
+  // absent, startup seeds an admin user; idempotent.
+  SEED_ADMIN_EMAIL: z.string().email().optional(),
+  SEED_ADMIN_PASSWORD: z.string().optional(),
   API_SERVICE_URL: z.string()
     .url()
     .optional()

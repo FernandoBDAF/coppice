@@ -1,8 +1,11 @@
 # AWS session runbook (ADR-006 · phase v5)
 
-> **Status: draft** — authored with the v5 skeleton; numbers marked ~ are
-> estimates to replace with measured values on the first real session
-> (EXP-50 records actuals).
+> **Status: code-complete, never applied** — updated in the v5 execution
+> pass (2026-07-19): all stacks/overlay/pipeline are implemented and
+> statically verified, but no AWS account has run them. Numbers marked ~
+> are estimates to replace with measured values on the first real session
+> (EXP-50 records actuals). First-session verification points are listed
+> under "Known gaps" below.
 
 A *session* is the unit of AWS usage: `make aws-up` → drills → `make
 aws-down`, same day. Between sessions only the base stack exists (tfstate,
@@ -12,39 +15,101 @@ ECR images, Route53 zone, budget, reaper) at ≈ $0/month.
 
 1. Dedicated AWS account; enable SSO or create an IAM user; profile `lab`
    in `~/.aws/config`, pinned region (ADR-006.5).
-2. `brew install terraform` (≥1.9). Copy
+2. Install `terraform` (≥1.9) + `aws` CLI. Copy
    `deploy/aws/terraform.tfvars.example` → `deploy/aws/terraform.tfvars`.
 3. `cd deploy/aws/backend-bootstrap && terraform init && terraform apply
-   -var-file=../terraform.tfvars` — note the `state_bucket` output.
-4. `cd ../base && terraform init -backend-config=...` (README) `&&
+   -var-file=../terraform.tfvars`, then `make aws-init` — it reads the
+   bootstrap outputs and points base+session at the S3 backend.
+4. `make aws-base-pack` (lambda zips), then `cd deploy/aws/base &&
    terraform apply -var-file=../terraform.tfvars`; delegate your domain's
    NS records to the `zone_ns` output.
 5. `make images REGISTRY=<ecr_registry>/coppice-lab TAG=<sha>` after
    `aws ecr get-login-password | docker login ...` — first push seeds ECR.
+6. Pipeline (EXP-54): set GitHub repo *variables* `AWS_DEPLOY_ROLE_ARN`
+   (base output `oidc_deploy_role_arn`) and `AWS_REGION`; per session, set
+   `deploy_role_arn` in tfvars to that same ARN so the cluster grants the
+   CI role an access entry. `.github/workflows/deploy-aws.yml` builds+pushes
+   on tag `lab-v*` (images published under the tag name) or
+   `workflow_dispatch`; the deploy leg is dispatch-gated, serialized via
+   `concurrency`, and runs in the `aws-lab` environment. It is
+   **image-rollout-only** — it rolls out verified ECR tags, it does *not*
+   `kubectl apply -k` the tree (CI holds no terraform state; a full apply
+   stays `make aws-deploy`). **Rollback** is a dispatch with
+   `tag_override=<prior tag>`: it **skips the build** (no rebuild or
+   clobber of image history) and verifies that tag exists in all 10 ECR
+   repos before rolling out.
 
 ## Session start (~20 min)
 
 ```
 make aws-plan    # review; no surprises policy
-make aws-up      # terraform apply session/ + kubeconfig + kubectl apply -k overlays/aws + obs
+make aws-up      # terraform apply session/ → aws-deploy (kubeconfig, overlay
+                 # with images+placeholders substituted, secrets, obs, checkpoints)
 ```
 
-Checkpoints (the make target prints them): VPC+EKS Ready (~12 min) → RDS
-available (~5 min) → migrations Jobs Complete → `kubectl -n lab-core get
-pods` all Ready → `curl https://api.<domain>/health` 200 via ALB+ACM.
+Session knobs: `TAG=<sha>` picks the image tag (default: current git short
+SHA — must exist in ECR); `OBS_LOGS=1` opts into OpenSearch/fluent-bit
+(default off on AWS — RAM/cost); tfvars `multi_az=true` only for the
+EXP-53 failover session. `make aws-deploy` mutates
+`deploy/k8s/overlays/aws/kustomization.yaml` via `kustomize edit set
+image` — don't commit that change.
+
+Checkpoints (`scripts/aws/session-checkpoints.sh` prints them): VPC+EKS
+Ready (~12 min) → RDS available (~5 min) → rds-bootstrap + migration Jobs
+Complete → `kubectl -n lab-core get pods` all Ready → ALB provisioned +
+external-dns records → `curl https://api.<domain>/health` 200 via ALB+ACM.
+
+Addon chart pins (helm, recorded at implementation 2026-07-19 — bump
+deliberately in `deploy/aws/session/addons.tf`):
+`aws-load-balancer-controller 3.4.2` · `external-secrets 2.8.0` (CRs use
+`external-secrets.io/v1`) · `external-dns 1.21.1`.
 
 ## Verify
 
-Scored smoke against the session: `make experiment E=exp-02` (API_URL
-override per experiment needs — HANDOFF §7), then the drill of the day
-(EXP-50..55 catalog).
+Smoke against the session: `curl https://api.<domain>/health` + EXP-02's
+manual steps against the ALB hosts, then the drill of the day (EXP-50..55
+catalog).
+
+EXP-50's burst leg: once pods are Ready, `make aws-sim-burst` runs the
+EXP-04 k6 harness (`scripts/simulate/api-load.js`, 50 VUs / 30s) against
+`https://api.<lab_domain>` + `https://auth.<lab_domain>` (hosts read from
+terraform output) — the AWS-pointed counterpart of the compose-local
+burst. Watch queue depth + latency panels and record actuals in the
+EXP-50 write-up.
+
+NOTE: the scored runner (`make experiment E=exp-02`, v4) currently targets
+compose-local URLs — pointing it at an EKS session needs a base-URL
+override in the experiment defs (see Known gaps) before EXP-51.
 
 ## Cost check (every session)
 
 Cost Explorer → filter tag `project=coppice-lab`, group by `stack`.
-Record in the session write-up: date, duration, $ actual. ~Expected:
-EKS control plane $0.10/h + 3×t3.medium ~$0.12/h + NAT ~$0.045/h + RDS
-t4g.micro ~$0.016/h ≈ **$0.65/h ≈ $5 for a long evening**.
+Record in the session write-up: date, duration, $ actual. ~Expected per
+hour: EKS control plane $0.10 + 3×t3.medium ~$0.125 + NAT ~$0.045 + RDS
+t4g.micro ~$0.016 + ALB ~$0.0225 ≈ **$0.31/h ≈ $2 for a ~6-hour
+evening** (plus S3/EBS/data-transfer pennies). The ALB line was missing
+from the earlier tally, whose four items summed to ~$0.28/h — neither
+matched the old "$0.65/h ≈ $5" headline; these are the itemized numbers.
+Replace all `~` figures with measured actuals from EXP-50.
+
+## Budget alarm test-fire (EXP-55)
+
+Prove the budget→ntfy path once, then restore — no live drill needed to
+author, but it must fire on the first real session:
+
+1. Lower the trigger below current spend: drop `budget_limit` in
+   `deploy/aws/terraform.tfvars` low enough that month-to-date already
+   exceeds 50% (or `aws budgets update-budget` the limit directly), then
+   `cd deploy/aws/base && terraform apply -var-file=../terraform.tfvars`.
+2. Wait for AWS Budgets to evaluate (can take a few hours; the 50%
+   threshold crosses first).
+3. Confirm the ntfy notification arrives. The notifier maps 50/80% →
+   `default`/`high` priority, 100% → `urgent`.
+4. Restore `budget_limit` to its real value and `terraform apply` again;
+   confirm no further alerts.
+
+Record the fire + restore in the EXP-55 write-up, alongside the reaper
+decoy proof.
 
 ## Session end
 
@@ -58,5 +123,40 @@ persistent allowlist; the reaper is the backstop, not the primary path).
 
 ## What survives a session (and why that's all)
 
-tfstate (S3+lock), ECR images, Route53 zone, budget+alarms, reaper. Each
-is pennies or free. Everything else has `stack=session` + `ttl` tags.
+tfstate (S3+lock), ECR images, Route53 zone, budget+alarms (+optional
+budget→ntfy SNS/Lambda), reaper, the CI OIDC provider+role. Each is
+pennies or free. Everything else has `stack=session` + `ttl` tags.
+
+## Known gaps — verify on the first real session
+
+Registered here and in `documentation/phases/v5-HANDOFF.md`; none are
+blockers for `make aws-up` itself:
+
+- **Presigned URLs under IRSA** (EXP-50): api-service/graphrag now fall
+  back to ambient (IRSA) credentials when static keys are absent —
+  presigning with temporary creds embeds the session token; verify the
+  round-trip against real S3.
+- **postgres-exporter is down on AWS**: `lab-obs/postgres-credentials` is
+  deliberately not seeded (ExternalSecret owns postgres creds); the
+  exporter needs its own ExternalSecret + RDS host wiring (follow-up).
+- **NetworkPolicy enforcement is OFF on EKS** (decision, this wave): the
+  VPC-CNI `enableNetworkPolicy` flag was removed, so the kind-shaped
+  netpols ship *inert* on AWS — they apply but nothing enforces them, so
+  AWS traffic is not netpol-restricted this phase. Re-enabling enforcement
+  needs AWS-shaped allows (ALB ingress ipBlock + RDS/S3 egress) in a
+  `patches/netpols-aws.yaml`; both the patch and the re-enable are deferred
+  to a later phase.
+- **Auth rate limiting** (ADR-009.5) has no ALB equivalent — needs WAF
+  later; dropped on AWS for now.
+- **rabbitmq/mongo/jwt secrets** stay init-secrets-seeded on AWS
+  (`SKIP_POSTGRES=1` guards the postgres one); uniform Secrets-Manager +
+  ExternalSecret migration is a registered follow-up.
+- **Scored runner is compose-local** (v4): experiment YAMLs hardcode
+  `http://localhost:8080`-style URLs and `scripts/experiments/run.py` has
+  no base-URL override — EXP-51 ("catalog on EKS") needs one added (env,
+  e.g. `EXPERIMENT_BASE_URL`, rewriting hosts per def) before the scored
+  subset can run against `api.<domain>`.
+- **rabbitmq guest password ⇄ definitions.json** (v4 deferral, ADR-008.4):
+  applies unchanged on EKS — the broker boots from the committed
+  definitions with guest/guest until definitions are regenerated with the
+  rotated password; same caveat, same fix path as kind.
