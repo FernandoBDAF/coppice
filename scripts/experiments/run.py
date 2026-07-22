@@ -9,8 +9,8 @@ Contract:
 Behavior:
  1. Load experiments/<id>.yaml (schema: experiments/README.md). Reject empty
     `assertions` — a scored run must be falsifiable (EXP-45).
- 2. Pre-check `needs` (compose project up / kind cluster / obs stack / guest
-    running) and fail fast with a pointed message.
+ 2. Pre-check `needs` (compose project up / kind cluster / obs stack / aws
+    session / guest running) and fail fast with a pointed message.
  3. Run `steps` sequentially via subprocess (shell=True, fail-fast; `background:
     true` → Popen without wait, tracked for cleanup).
  4. Poll `assertions` every 5s until each passes or its own timeout lapses:
@@ -69,7 +69,7 @@ OPS = {
     ">=": lambda a, b: a >= b,
 }
 ASSERTION_TYPES = {"promql", "http", "cli"}
-NEEDS_TOKENS = {"compose", "kind", "obs"}  # plus guest:<name>
+NEEDS_TOKENS = {"compose", "kind", "obs", "aws"}  # plus guest:<name>
 _MISSING = object()
 
 
@@ -171,7 +171,7 @@ def validate_experiment(doc: Any, expected_id: Optional[str] = None) -> list[str
     else:
         for n in needs:
             if not (n in NEEDS_TOKENS or (isinstance(n, str) and n.startswith("guest:"))):
-                errors.append(f"unknown need {n!r} (want compose|kind|obs|guest:<name>)")
+                errors.append(f"unknown need {n!r} (want compose|kind|obs|aws|guest:<name>)")
 
     for key in ("steps", "watch", "cleanup"):
         val = doc.get(key, [])
@@ -322,7 +322,13 @@ def _compose_running_services() -> set[str]:
 
 def precheck_needs(needs: list[str]) -> list[str]:
     failures: list[str] = []
-    for need in needs or []:
+    needs = needs or []
+    # A guest runs on the substrate declared as a sibling need: compose (the
+    # default), or a k8s cluster when `kind`/`aws` is also present. A k8s guest
+    # is a namespace, not a compose project, so its readiness must be probed
+    # with kubectl (mirrors the `obs` need), never `docker compose ps`.
+    guest_on_k8s = ("kind" in needs) or ("aws" in needs)
+    for need in needs:
         try:
             if need == "compose":
                 running = _compose_running_services()
@@ -339,13 +345,32 @@ def precheck_needs(needs: list[str]) -> list[str]:
                                       shell=True, capture_output=True, text=True)
                 if proc.returncode != 0:
                     failures.append("obs: lab-obs namespace absent — run `make obs-up`")
+            elif need == "aws":
+                # A live AWS session (v5 track) surfaces as a kube-context whose
+                # name carries "aws" (aws-session-<id>); mirrors the kind check.
+                proc = subprocess.run("kubectl config current-context",
+                                      shell=True, capture_output=True, text=True)
+                if proc.returncode != 0 or "aws" not in proc.stdout.lower():
+                    failures.append("aws: no live AWS session context — run `make aws-up` (v5 AWS track)")
             elif isinstance(need, str) and need.startswith("guest:"):
                 name = need.split(":", 1)[1]
-                proc = subprocess.run(
-                    f"docker compose -f guests/{name}/docker-compose.yml ps --status running --services",
-                    shell=True, cwd=str(ROOT), capture_output=True, text=True)
-                if proc.returncode != 0 or not proc.stdout.strip():
-                    failures.append(f"guest:{name}: not up — run `make guest-up G={name}`")
+                if guest_on_k8s:
+                    # k8s substrate: the guest onboards as its own namespace
+                    # (kind/aws). Presence of the namespace is the substrate-
+                    # correct readiness gate (mirrors the `obs` need); deeper
+                    # per-pod readiness is left to the experiment's assertions.
+                    proc = subprocess.run(f"kubectl get ns {name}",
+                                          shell=True, capture_output=True, text=True)
+                    if proc.returncode != 0:
+                        failures.append(
+                            f"guest:{name}: namespace absent on the cluster — "
+                            f"run `make guest-up G={name}`")
+                else:
+                    proc = subprocess.run(
+                        f"docker compose -f guests/{name}/docker-compose.yml ps --status running --services",
+                        shell=True, cwd=str(ROOT), capture_output=True, text=True)
+                    if proc.returncode != 0 or not proc.stdout.strip():
+                        failures.append(f"guest:{name}: not up — run `make guest-up G={name}`")
             else:
                 failures.append(f"unknown need {need!r}")
         except OSError as e:

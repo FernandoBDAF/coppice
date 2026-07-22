@@ -1,0 +1,94 @@
+# mycelium graph-api — the graph surface of mycelium's consolidated FastAPI
+# service, bound on :8081 (recon 2026-07-20, mycelium@06d2651:
+# GraphRAG/src/app/api/fastapi_app/main.py). In reality stages (:8080) and graph
+# (:8081) are ONE FastAPI process; the lab models them as two logical surfaces,
+# and guest-side KM-2 may ship a single image bound to both ports. Exposes
+# /metrics (scraped via the ServiceMonitor in ../obs). /health already exists on
+# the FastAPI service; a dedicated /ready is the genuine KM-2 gap (readiness
+# falls back to /health until then).
+apiVersion: v1
+kind: Service
+metadata:
+  name: mycelium-graph-api
+  namespace: mycelium
+  labels:
+    app: mycelium-graph-api
+    lab.local/guest: mycelium
+spec:
+  ports:
+    - name: http
+      port: 8081
+      targetPort: http
+  selector:
+    app: mycelium-graph-api
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mycelium-graph-api
+  namespace: mycelium
+  labels:
+    app: mycelium-graph-api
+    lab.local/guest: mycelium
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mycelium-graph-api
+  template:
+    metadata:
+      labels:
+        app: mycelium-graph-api
+        lab.local/guest: mycelium
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8081"
+    spec:
+      securityContext:
+        runAsNonRoot: true
+      containers:
+        - name: graph-api
+          image: localhost:5001/mycelium-graph-api:dev
+          imagePullPolicy: Always
+          env:
+            # TARGET env for the KM-1 deterministic fake mode (ADR-007.3) —
+            # UNBUILT today: mycelium has no LLM_MODE var and real runs require
+            # OPENAI_API_KEY/VOYAGE_API_KEY. Zero-spend is enforced structurally
+            # by the netpol's absent egress to the LLM/embedding providers, not
+            # by this env, until KM-1 lands.
+            - name: LLM_MODE
+              value: fake
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          ports:
+            - name: http
+              containerPort: 8081
+          # /health exists on the FastAPI service (recon); a dedicated /ready is
+          # the KM-2 gap — readiness uses /health until it lands.
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 2
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 5
+          resources:
+            requests:
+              cpu: 50m
+              memory: 96Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi

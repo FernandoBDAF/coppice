@@ -27,6 +27,11 @@ get a write-up in [`documentation/experiments/`](documentation/experiments/).
 | [EXP-10](#exp-10--message-ttl-expiry-work-loss-semantics) | Message-TTL expiry (work-loss semantics) | `compose` | yes | [exp-10.yaml](experiments/exp-10.yaml) |
 | [EXP-11](#exp-11--document-pipeline-e2e) | Document pipeline E2E | `compose` | yes | [exp-11.yaml](experiments/exp-11.yaml) |
 | [EXP-12](#exp-12--cache-outage-discovery-experiment) | Cache outage (discovery experiment) | `compose` | yes | [exp-12.yaml](experiments/exp-12.yaml) |
+| [EXP-70](#exp-70--km-pipeline-burst-fake-mode) | KM pipeline burst (fake mode) | `compose`, `guest:mycelium` | yes | [exp-70.yaml](experiments/exp-70.yaml) |
+| [EXP-71](#exp-71--km-budgeted-real-run) | KM budgeted real run | `compose`, `guest:mycelium` | yes | [exp-71.yaml](experiments/exp-71.yaml) |
+| [EXP-72](#exp-72--agent-run-lifecycle-loam) | Agent-run lifecycle (loam) | `kind`, `guest:loam` | yes | [exp-72.yaml](experiments/exp-72.yaml) |
+| [EXP-73](#exp-73--agent-resource-envelope-loam) | Agent resource envelope (loam) | `kind`, `guest:loam` | yes | [exp-73.yaml](experiments/exp-73.yaml) |
+| [EXP-74](#exp-74--guest-on-aws) | Guest on AWS | `aws`, `guest:mycelium` | yes | [exp-74.yaml](experiments/exp-74.yaml) |
 
 <!-- experiments-index:end -->
 
@@ -767,6 +772,183 @@ or wrong token → **401 and an audit log line**; the correct token → 200;
 `?token=` on any non-stream route → 401 (query auth is scoped to SSE only).
 Booting `CONTROLD_ENABLE_AWS=1` without a token or TLS fails fast at startup.
 **Cleanup:** stop the gated daemon; restart in the default localhost mode.
+
+---
+
+## Guest-systems experiments (v7)
+
+These drill the two onboarded guests — **mycelium** (the GraphRAG ingestion
+pipeline, formerly KnowledgeManager) and **loam** (agent runs as Kubernetes
+Jobs) — against the host contract (ADR-007). Substrate varies per experiment:
+EXP-70/71 run the mycelium pipeline on **compose**, EXP-72/73 run loam on
+**kind**, EXP-74 runs one guest inside a real **AWS session** (v5).
+
+**Defined but NOT YET RUNNABLE this pass.** The scored definitions
+([exp-70..74.yaml](experiments/)) and the lab-side onboarding
+(`guests/mycelium/`, `guests/loam/`, the `mycelium` broker vhost) landed and
+are statically verified, but the guest images are unbuilt and no live
+cluster/AWS session exists — so these register the v7 exit criteria and run in
+the execution round. Per-experiment blockers appear in each **Status** line
+below; the full ledger is in
+[v7-DEFERRED.md](documentation/phases/v7-DEFERRED.md) and execution steps in
+[v7-HANDOFF.md](documentation/phases/v7-HANDOFF.md).
+
+---
+
+## [EXP-70 · KM pipeline burst (fake mode)](experiments/exp-70.yaml)
+
+**Goal:** flood the mycelium pipeline with N fixture "videos" in deterministic
+fake-LLM mode and watch every stage queue drain with **zero LLM spend** — the
+honest inversion of "no key mounted."
+**Validates:** ADR-007.3/.4 — the mandatory fake-LLM mode (KM-1), the
+containerized pipeline (KM-2), and mycelium adopting the lab's
+envelope/topology/retry conventions on its own vhost (KM-4, `km.stage.*`).
+
+**Steps**
+1. `make km-up MODE=fake` — bring the guest up with `LLM_MODE=fake` and no
+   OPENAI/VOYAGE keys mounted.
+2. `make km-flood N=25` (background) — flood fixture ingestion, start polling
+   the drain.
+3. Watch **KM Pipeline → stage queue depth** (`km.stage.*` draining to 0),
+   **DLQ depth** (flat at 0), **per-stage duration** (fake mode is CPU-bound,
+   fast).
+
+**Expect:** all `km.stage.*` work queues drain to 0; the DLQ never accumulates
+(a non-empty DLQ means retries were exhausted); `stages-api` `/ready` 200s on
+lab port 4220; zero-spend proven at the pod — `LLM_MODE=fake` with
+`OPENAI_API_KEY`/`VOYAGE_API_KEY` both empty (KM-1 hard-fails if a real key is
+set, so their absence + fake mode is the by-construction proof).
+**Cleanup:** `make km-down`.
+**Status:** NOT YET RUNNABLE — needs the mycelium guest images built (KM-1 fake
+mode + KM-2 containerize, guest-side PRs pending) and KM-3 lab onboarding
+(`mycelium` vhost + `km.stage.*` topology, ServiceMonitor) live on a cluster.
+
+---
+
+## [EXP-71 · KM budgeted real run](experiments/exp-71.yaml)
+
+**Goal:** the same pipeline as EXP-70 but with real keys — ONE small ingestion
+under a hard budget — to compare fake-vs-real stage timings and record actual
+LLM spend.
+**Validates:** the pipeline's real path against the KM cost model (KM plan
+§cost model); the fake-mode fidelity claim (EXP-70) by contrast.
+
+**Steps**
+1. `make km-up MODE=real` — keys come from the lab secret path, NOT the repo.
+2. `make km-ingest VIDEO=fixtures/real/one-short.json MAX_ITERATIONS=5`
+   (background) — a single short video / tiny batch bounded by the iteration
+   cap.
+3. Watch **KM Pipeline → stage queue depth** (drains once the single run
+   completes), **per-stage duration** (compare against EXP-70 fake timings),
+   **LLM tokens / Voyage RPM** (the spend meter).
+
+**Expect:** the one budgeted run drains every `km.stage.*` queue (generous
+deadline — real OpenAI + Voyage at a 20 RPM cap is far slower than fake mode);
+`MAX_ITERATIONS` is set and small (≤10), proving the run is bounded not
+open-ended; `stages-api` `/ready` 200s. The dollar figure and the
+fake-vs-real timing comparison are recorded **by a human in the write-up** —
+the runner cannot score "$ spent." **Cleanup:** `make km-down`.
+**Status:** MANUAL / BUDGETED, and NOT YET RUNNABLE — run deliberately, never
+in unattended CI; requires real OPENAI/VOYAGE keys plus the same guest-image +
+onboarding prerequisites as EXP-70.
+
+---
+
+## [EXP-72 · Agent-run lifecycle (loam)](experiments/exp-72.yaml)
+
+**Goal:** launch a real loam workflow as a Kubernetes Job and prove the
+operational envelope — it completes within budget, logs and branch artifact
+retrievable — then force a hung agent and watch it get killed and reported
+cleanly.
+**Validates:** ADR-007.5/.7 — the loam k8s-Jobs runner adapter (L-1 callsite
+indirection + L-2 provider), `activeDeadlineSeconds` from `runTimeoutMs`, log
+capture, and the branch-push contract. Asserts the envelope only, **not** agent
+output quality.
+
+**Steps**
+1. `make loam-run RUN=lifecycle-smoke` (background) — a real (small) workflow
+   as a Job in ns `loam`.
+2. `make loam-run-hung RUN=hung-drill RUN_TIMEOUT_MS=60000` (background) — an
+   agent wedged past its budget so `activeDeadlineSeconds` fires.
+3. Watch **loam Agent Farm → Job phase**: `lifecycle-smoke` Active→Complete;
+   `hung-drill` Active→Failed/DeadlineExceeded.
+
+**Expect:** (a) `lifecycle-smoke` reaches `condition=complete` within its
+wall-clock budget; the Job pushed `loam/run/lifecycle-smoke` to origin (branch
+artifact retrievable) and its pod logs are captured. (b) `hung-drill` reaches
+`condition=failed` with reason **DeadlineExceeded** (backoffLimit 0 → no
+retries). "Sandbox cleaned" is enforced by `ttlSecondsAfterFinished: 3600`
+(L-2) — GC'd an hour after finish, longer than any experiment window, so it's
+a deferred human/next-run check, not scored here. **Cleanup:** `make loam-clean
+RUN=lifecycle-smoke` / `RUN=hung-drill`.
+**Status:** NOT YET RUNNABLE — needs the loam k8s-Jobs adapter (L-1/L-2,
+guest-side PRs pending; loam is host-driven today) and L-3 lab onboarding
+(ns `loam`, Secret `loam-agent-token`, quotas, netpols) live on kind.
+
+---
+
+## [EXP-73 · Agent resource envelope (loam)](experiments/exp-73.yaml)
+
+**Goal:** prove the quota/secret envelope around agent Jobs — an OOM at the
+limit is contained (neighbors untouched), a missing token fails fast with a
+clear error, and a rotated Secret is picked up by the next run.
+**Validates:** ADR-007.7 — ResourceQuota/LimitRange for concurrent Jobs,
+container memory limits (OOMKilled), Secret injection via `secretKeyRef`.
+Proves the envelope, **not** agent behavior.
+
+**Steps**
+1. `make loam-run-oom RUN=oom-drill MEM_LIMIT=256Mi` (background) — an agent
+   driven past its memory limit.
+2. `make loam-run RUN=neighbor` (background) — an innocent neighbor in the same
+   namespace/quota that must stay healthy.
+3. `make loam-run-notoken RUN=notoken-drill` (background) — a run launched with
+   the Secret deliberately unmounted.
+4. Watch **loam Agent Farm → pod memory vs limit** (oom-drill hits the ceiling)
+   and **Job phase** (neighbor unaffected; notoken fails fast).
+
+**Expect:** (a) `oom-drill` ends `condition=failed` with the container's
+terminated reason **OOMKilled**; (b) `neighbor` completes normally — the quota
+proof that one Job's blowout is contained; (c) `notoken-drill` reaches
+`condition=failed` quickly and its logs name the missing secret/token
+(`secret|token|CLAUDE_CODE_OAUTH_TOKEN`). The **rotation drill is a human step**
+(commented in the YAML, verified in the write-up): rotate the Secret, launch a
+fresh run, confirm it authenticates with the new token (Jobs read the Secret at
+pod-start via `secretKeyRef`). **Cleanup:** `make loam-clean` for each RUN.
+**Status:** NOT YET RUNNABLE — same prerequisites as EXP-72 plus the
+ResourceQuota/LimitRange for 3 concurrent Jobs (L-3).
+
+---
+
+## [EXP-74 · Guest on AWS](experiments/exp-74.yaml)
+
+**Goal:** one guest (owner's pick) runs a scaled-down drill inside a real,
+short-lived AWS session; cost is recorded; teardown leaves **nothing** billable.
+**Validates:** the v5 AWS-sessions track end-to-end with a live guest — session
+terraform up/down, guest deploy at dev scale, readiness inside the session, and
+the clean-teardown guarantee. Drafted for mycelium; the loam variant swaps
+ns/readiness for ns `loam` + `/api/capabilities`.
+
+**Steps**
+1. `make aws-session-up SESSION=exp-74` — stand up the short-lived session (v5
+   terraform).
+2. `make km-aws-drill SESSION=exp-74 SCALE=down` — deploy the guest at dev
+   numbers, run a smoke drill that WAITS for readiness and writes
+   `artifacts/exp-74-ready.txt`.
+3. `make aws-session-down SESSION=exp-74` — tear the whole session down.
+4. Watch **AWS Session** → guest pod readiness, cost-explorer / session-tag
+   spend (the cost line), terraform state (empty after teardown).
+
+**Expect:** readiness WAS achieved in the session (asserted against the
+`stages-api ready` marker the drill recorded — the live pod is gone by
+teardown, so the captured proof is what's checked); and teardown leaves no
+running resources — no live guest namespace in the session context AND the
+session's terraform state is empty (a leaked EKS/RDS resource is billable). The
+**$ cost line is recorded by a human** in the write-up. **Cleanup:** idempotent
+`make aws-session-down SESSION=exp-74` (belt-and-suspenders, always runs).
+**Status:** NOT YET RUNNABLE — BLOCKED / DEFERRED on v5: the AWS-sessions track
+is not yet executed (no `aws` runner context, no session terraform, no EKS
+context). Runs only after v5 lands and the guest images (EXP-70/71
+prerequisites) exist; the owner picks the guest at execution time.
 
 ---
 
