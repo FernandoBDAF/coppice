@@ -65,10 +65,15 @@ spec:
         - protocol: TCP
           port: 8080
 ---
-# The UI is reachable from the shared ingress controller only (hostname
-# mycelium.lab.local). The APIs have no ingress path; kubelet probes bypass
-# NetworkPolicy by design. (GraphDash was retired in mycelium's phase 4, so the
-# only ingress-facing UI is StagesUI.)
+# Both StagesUI and stages-api are reachable from the shared ingress controller
+# only (hostname mycelium.lab.local): the ingress routes / → StagesUI (:3000)
+# and /api → stages-api (:8080), so stages-api IS on the ingress path and needs
+# its own hole below (a parallel policy, not merged with the UI one — merging
+# selectors+ports would wrongly open :3000 on the API pod and :8080 on the UI
+# pod). graph-api (:8081) has NO ingress path (GraphDash was retired in
+# mycelium's phase 4; graph exploration now lives inside StagesUI at /explore),
+# so it stays reachable only by the obs scrape. kubelet probes bypass
+# NetworkPolicy by design.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -89,6 +94,31 @@ spec:
       ports:
         - protocol: TCP
           port: 3000
+---
+# stages-api's /api surface, routed from the shared ingress controller
+# (mycelium.lab.local/api → :8080). Same-origin with StagesUI; without this hole
+# every /api call is dropped by default-deny and nginx returns 504. Only
+# ingress-nginx is admitted here — graph-api (:8081) is deliberately NOT opened.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-to-api
+  namespace: mycelium
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app
+        operator: In
+        values: [mycelium-stages-api]
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              app.kubernetes.io/name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 8080
 ---
 # Shared-infra egress (ADR-007.1): the pipeline/APIs reach the lab's Mongo
 # (27017) and RabbitMQ (5672) in lab-infra. Stage handoff today = Mongo

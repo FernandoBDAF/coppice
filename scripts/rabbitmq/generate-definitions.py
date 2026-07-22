@@ -51,17 +51,21 @@ EMAIL_EXPIRED_RETENTION_MS = 86_400_000
 # This is the TARGET topology for the queue-mode migration (KM-4, ADR-007.4) —
 # mycelium today dispatches whole runs on arq/Redis and hands stages off via
 # Mongo collections; the migration re-plays those stage boundaries onto this
-# vhost. The stage set below is pinned to mycelium's real pipelines (recon
-# 2026-07-20, mycelium@06d2651): ingestion ingest→clean→chunk→enrich→embed→
-# redundancy→trust, then graphrag graph_extraction→entity_resolution→
-# graph_construction→community_detection→insights_generation. Each stage =
-# one work queue on `mycelium-stages`, same retry ladder + DLQ as lab-core.
+# vhost. The stage set below is the full authoritative STAGE_REGISTRY (16
+# stages) pinned to mycelium@06d2651 (recon 2026-07-20,
+# GraphRAG/src/domain/shared/pipeline_runner.py:92), in the registry's
+# declaration order — every stage the runner can resolve (STAGE_REGISTRY /
+# _resolve_stage_class) MUST get a bound queue here, or a message routed to it
+# hits the `mycelium-stages` direct exchange with no bound queue and is
+# silently discarded as unroutable. Each stage = one work queue on
+# `mycelium-stages`, same retry ladder + DLQ as lab-core.
 MYCELIUM_VHOST = "mycelium"
 MYCELIUM_EXCHANGE = "mycelium-stages"
 MYCELIUM_STAGES = [
-    "ingest", "clean", "chunk", "enrich", "embed", "redundancy", "trust",
-    "graph_extraction", "entity_resolution", "graph_construction",
-    "community_detection", "insights_generation",
+    "clean", "chunk", "enrich", "ingest", "ingest_documents",
+    "chunk_documents", "embed", "redundancy", "trust", "compress",
+    "backfill_transcript", "graph_extraction", "entity_resolution",
+    "graph_construction", "community_detection", "insights_generation",
 ]
 MYCELIUM_DLQ_TTL_MS = 604_800_000  # 7d — matches the document pipeline DLQ
 

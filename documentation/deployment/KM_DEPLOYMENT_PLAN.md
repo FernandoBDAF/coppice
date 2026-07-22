@@ -43,8 +43,12 @@ bottleneck — read at `src/infrastructure/llm/rate_limit.py:15`);
 (not a hard dependency). **No app Dockerfiles anywhere** (CI
 builds no images). `/health` **and** `/metrics` already exist on the
 consolidated app (`main.py:179`, `:155`); `/ready` does **not** (a real
-gap). Prometheus metric names are **unprefixed** — `chunks_processed` and
-`stage_duration_seconds` (`src/lib/metrics/`), with no `mycelium_*` prefix.
+gap). Prometheus metric names are **unprefixed** — `documents_processed`
+(Counter, label `stage`; `src/core/base/stage.py:47`) and
+`stage_duration_seconds` (exported as a **summary** — `_count/_sum/_avg`, no
+`_bucket`/`quantile` series; `src/lib/metrics/exporters.py`), with no
+`mycelium_*` prefix. (`chunks_processed` appears only in docstrings/mocks —
+it is never registered on the scraped surface.)
 Tracing stubbed; structured logging present. Concurrency env-tuned
 (prod ~300 per graphrag stage; CPU + network-I/O profile, no GPU).
 
@@ -105,7 +109,7 @@ Tracing stubbed; structured logging present. Concurrency env-tuned
    Postgres/MinIO needs.
 5. Observability: its Prometheus metrics scraped by the lab stack
    (ServiceMonitor) — note the metric names are **unprefixed**
-   (`chunks_processed`, `stage_duration_seconds`), so scrape config and
+   (`documents_processed`, `stage_duration_seconds`), so scrape config and
    dashboards must not assume a `mycelium_*` prefix; its Loki/Promtail stack
    NOT deployed (lab OpenSearch ships logs); tracing stays stubbed (out of
    scope).

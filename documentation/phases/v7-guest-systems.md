@@ -26,7 +26,8 @@ experiments.
 - **HOST_CONTRACT.md** (v3) proven by hello-guest; systems registry (v6).
   Port blocks: 42xx = KM, 43xx = loam (ADR-007.2).
 - **mycelium** (`/home/fbarroso/forest/mycelium`): GraphRAG ingestion
-  pipeline (YouTube → knowledge graphs), GraphDash + StagesUI front-ends,
+  pipeline (YouTube → knowledge graphs), StagesUI front-end (GraphDash was
+  retired upstream in phase 4),
   systemic-control module; rich observability analyses exist in its docs.
   Decisions: pipeline onboards first with a **mandatory deterministic
   fake-LLM mode** (ADR-007.3); it **adopts the lab's envelope/topology/retry

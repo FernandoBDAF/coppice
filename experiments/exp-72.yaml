@@ -14,7 +14,7 @@
 #      (from runTimeoutMs) and is killed + reported cleanly (DeadlineExceeded).
 id: exp-72
 title: Agent-run lifecycle (loam)
-needs: [kind, guest:loam]
+needs: [kind, guest:loam]   # kind substrate → guest:loam prechecks via `kubectl get ns loam`, not compose
 steps:
   # Launch a real (small) workflow as a Job in ns loam. CLI-driven in the lab
   # rehearsal (Mission Control integration is out of scope, ADR-005.5).

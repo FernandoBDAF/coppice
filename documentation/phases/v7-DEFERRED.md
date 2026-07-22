@@ -92,10 +92,11 @@ the guest repo, specified in `documentation/phases/v7-HANDOFF.md`.
   reached via a documented wide hole. FQDN-scoped egress (e.g. an egress
   gateway) is a follow-up; the UI pod stays fully locked down.
 - **mycelium metric names are now known (re-reconned 2026-07-20)** — the real
-  Prometheus names are **unprefixed**: `chunks_processed` (labels `stage`/
-  `stage_name`) and `stage_duration_seconds` (`src/lib/metrics/`); there is **no
-  `mycelium_*` prefix**, and `/metrics` already exists. The dashboard can be
-  reconciled to these now rather than waiting on KM-2.
+  Prometheus names are **unprefixed**: `documents_processed` (Counter, label
+  `stage`; `src/core/base/stage.py:47`) and `stage_duration_seconds` (exported
+  as a **summary** — no `_bucket`/`quantile` series); there is **no
+  `mycelium_*` prefix**, and `/metrics` already exists. The dashboard is
+  reconciled to these (it does not wait on KM-2).
 - **Broker topology is additive but destructive to *change*:** the
   `mycelium` vhost is new (safe to add), but once mounted, altering a
   queue's args hits PRECONDITION_FAILED — `make nuke`/recreate during dev

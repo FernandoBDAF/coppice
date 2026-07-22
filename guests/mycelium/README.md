@@ -76,7 +76,8 @@ Dockerfiles and its CI builds no images. Guest-side PRs must land first:
 - **KM-2** — Dockerfiles + a `/ready` handler. `/health`
   (`fastapi_app/main.py:179`) and `/metrics` (`:155`, Prometheus text)
   **already exist upstream**; `/ready` is the real gap. Metric names are
-  unprefixed (`chunks_processed`, `stage_duration_seconds`) — no `mycelium_*`.
+  unprefixed (`documents_processed`, `stage_duration_seconds` — the latter
+  exported as a summary, no histogram buckets) — no `mycelium_*`.
 
 Until KM-1/KM-2 land, `make guest-up G=mycelium` (and the compose/kind `up`
 targets) will **fail to pull images** — this scaffolding is statically valid

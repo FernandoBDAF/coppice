@@ -11,7 +11,7 @@ junit-ish report appended to `documentation/experiments/`.
 ```yaml
 id: exp-04                # matches EXPERIMENTS.md heading
 title: Burst absorption & drain
-needs: [compose]          # compose | kind | obs | guest:<name> — runner pre-checks
+needs: [compose]          # compose | kind | obs | aws | guest:<name> — runner pre-checks
 steps:                    # executed sequentially, shell, fail-fast
   - run: make queues
   - run: make sim-burst

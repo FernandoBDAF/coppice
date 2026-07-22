@@ -48,7 +48,7 @@ host-side compose mapping (`4310→4400`, `4320→4500`) — the k8s Services us
 > middleware 403s any non-loopback `Host` (`serve.ts:535-537`) — so a kubelet
 > probe is rejected and the pod never goes Ready. Probe the **UI** (4400, no
 > such guard) instead, or gate readiness on loam shipping a non-loopback/bearer
-> serve mode (unbuilt — `PRD.md:126`).
+> serve mode (unbuilt — `PRD.md:128`).
 
 **Agent runs are NOT a long-running service** — and today they are
 **host-driven**: the host process holds the sandbox handle and drives the Claude

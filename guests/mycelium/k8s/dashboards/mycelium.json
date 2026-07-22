@@ -13,13 +13,14 @@
       "id": 1,
       "type": "timeseries",
       "title": "Stage throughput (processed/s by stage)",
+      "description": "Recon @ mycelium 06d2651: the real per-stage throughput counter on the scraped :8080 stages surface is `documents_processed` (Counter, label `stage`), registered in GraphRAG/src/core/base/stage.py:47-48 and incremented at stage.py:345,529. `chunks_processed` is NOT registered on this surface — it survives only in docstrings/mocks (src/lib/metrics/__init__.py, collectors.py:19), so the old query was dead by construction.",
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] },
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (stage) (rate(chunks_processed[2m]))",
+          "expr": "sum by (stage) (rate(documents_processed[2m]))",
           "legendFormat": "{{stage}}"
         }
       ]
@@ -27,14 +28,15 @@
     {
       "id": 2,
       "type": "timeseries",
-      "title": "Stage duration p95 (by stage)",
+      "title": "Stage duration (avg, by stage)",
+      "description": "Recon @ mycelium 06d2651: `stage_duration_seconds` (label `stage`) is declared as a Histogram in code (GraphRAG/src/core/base/stage.py:44-46) but EXPORTED as a Prometheus SUMMARY — `# TYPE stage_duration_seconds summary` with `_count/_sum/_min/_max/_avg` suffixes and NO `_bucket`/`le` series (renderer: src/lib/metrics/exporters.py:_export_histogram, ~L96-135). No `quantile=` series are emitted either, so `histogram_quantile(...)` and any true p95 are impossible from this surface. This panel therefore shows the windowed average `rate(_sum)/rate(_count)` and is titled honestly as avg, not p95.",
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
       "targets": [
         {
           "refId": "A",
-          "expr": "histogram_quantile(0.95, sum by (le, stage) (rate(stage_duration_seconds_bucket[5m])))",
+          "expr": "sum by (stage) (rate(stage_duration_seconds_sum[5m])) / sum by (stage) (rate(stage_duration_seconds_count[5m]))",
           "legendFormat": "{{stage}}"
         }
       ]
@@ -76,7 +78,7 @@
       "gridPos": { "h": 6, "w": 24, "x": 0, "y": 16 },
       "options": {
         "mode": "markdown",
-        "content": "Stage counters/durations come from mycelium's Prometheus `/metrics` (the stages surface of its consolidated FastAPI). Metric names are pinned to mycelium's real, **unprefixed** collectors (recon 2026-07-20): `chunks_processed` (label `stage`) and the `stage_duration_seconds` histogram — verify the histogram type when the KM-2 image lands. Queue panels read the LAB's shared RabbitMQ exporter for the `mycelium` vhost (the KM-4 queue-mode target topology, owned by the lab's generator, ADR-007.4); depths stay 0 until queue-mode publishes. In fake mode (EXP-70, once KM-1 lands) stages drain with zero LLM spend."
+        "content": "Stage counters/durations come from mycelium's Prometheus `/metrics` (the :8080 stages surface of its consolidated FastAPI: `src/app/api/stages/api.py:924-926` → `export_prometheus_text()`, which dumps the whole global registry). Metric names are pinned to mycelium's real, **unprefixed** collectors verified at commit `06d2651`: `documents_processed` (Counter, label `stage`; `src/core/base/stage.py:47-48`) for throughput, and `stage_duration_seconds` (label `stage`; `src/core/base/stage.py:44-46`) which — despite being a `Histogram` in code — is EXPORTED as a Prometheus **summary** (`_count/_sum/_min/_max/_avg`, no `_bucket`/`le`, no `quantile=`; renderer `src/lib/metrics/exporters.py:_export_histogram`). Hence the duration panel shows windowed avg, not p95. NOTE: `chunks_processed` and any `*_bucket` series do **not** exist on this surface. Queue panels read the LAB's shared RabbitMQ exporter for the `mycelium` vhost (the KM-4 queue-mode target topology, owned by the lab's generator, ADR-007.4); depths stay 0 until queue-mode publishes. In fake mode (EXP-70, once KM-1 lands) stages drain with zero LLM spend."
       }
     }
   ]

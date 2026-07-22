@@ -78,8 +78,9 @@ extend `scripts/rabbitmq/generate-definitions.py` with a `mycelium` vhost
 (stage queues `km.stage.<name>` + retry tiers + DLQ, same generator
 pattern; ADR-007.4) — definitions stay single-sourced. ServiceMonitor +
 a KM Grafana dashboard built on the **real, already-served** `/metrics`
-names — **unprefixed** `chunks_processed` (labels `stage`/`stage_name`) and
-`stage_duration_seconds` (`src/lib/metrics/`); there is **no `mycelium_*`
+names — **unprefixed** `documents_processed` (Counter, label `stage`;
+`src/core/base/stage.py:47`) and `stage_duration_seconds` (exported as a
+**summary**, no `_bucket`/`quantile` series); there is **no `mycelium_*`
 prefix**. launch.yaml; un-DRAFT `systems/mycelium.yaml`.
 
 **KM-4 (mycelium repo) — stage-level queue-mode:** `PipelineRunner

@@ -13,7 +13,7 @@
 # (EXP-74 cost line, phase acceptance) — the runner cannot score "$ spent".
 id: exp-74
 title: Guest on AWS
-needs: [aws, guest:mycelium]
+needs: [aws, guest:mycelium]   # aws substrate → guest:mycelium prechecks via `kubectl get ns mycelium`, not compose
 steps:
   # Stand up a short-lived AWS session (v5 terraform), deploy the guest
   # scaled to dev numbers, run a smoke drill that WAITS for readiness and

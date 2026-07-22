@@ -15,7 +15,7 @@
 #      commented below (kubectl-driven, verified in the write-up).
 id: exp-73
 title: Agent resource envelope (loam)
-needs: [kind, guest:loam]
+needs: [kind, guest:loam]   # kind substrate → guest:loam prechecks via `kubectl get ns loam`, not compose
 steps:
   # OOM drill: an agent workload that inflates memory past its k8s limit.
   - run: make loam-run-oom RUN=oom-drill MEM_LIMIT=256Mi

@@ -26,17 +26,21 @@ the migration is the exercise (KM_DEPLOYMENT_PLAN §2).
 
 | routing key | work queue | retry tiers | DLQ (TTL) |
 |---|---|---|---|
-| `km.stage.ingest` | `km.stage.ingest` | 5s/30s/2m | `km.stage.ingest.dlq` (168h) |
 | `km.stage.clean` | `km.stage.clean` | 5s/30s/2m | `km.stage.clean.dlq` (168h) |
 | `km.stage.chunk` | `km.stage.chunk` | 5s/30s/2m | `km.stage.chunk.dlq` (168h) |
 | `km.stage.enrich` | `km.stage.enrich` | 5s/30s/2m | `km.stage.enrich.dlq` (168h) |
+| `km.stage.ingest` | `km.stage.ingest` | 5s/30s/2m | `km.stage.ingest.dlq` (168h) |
+| `km.stage.ingest_documents` | `km.stage.ingest_documents` | 5s/30s/2m | `km.stage.ingest_documents.dlq` (168h) |
+| `km.stage.chunk_documents` | `km.stage.chunk_documents` | 5s/30s/2m | `km.stage.chunk_documents.dlq` (168h) |
 | `km.stage.embed` | `km.stage.embed` | 5s/30s/2m | `km.stage.embed.dlq` (168h) |
 | `km.stage.redundancy` | `km.stage.redundancy` | 5s/30s/2m | `km.stage.redundancy.dlq` (168h) |
 | `km.stage.trust` | `km.stage.trust` | 5s/30s/2m | `km.stage.trust.dlq` (168h) |
+| `km.stage.compress` | `km.stage.compress` | 5s/30s/2m | `km.stage.compress.dlq` (168h) |
+| `km.stage.backfill_transcript` | `km.stage.backfill_transcript` | 5s/30s/2m | `km.stage.backfill_transcript.dlq` (168h) |
 | `km.stage.graph_extraction` | `km.stage.graph_extraction` | 5s/30s/2m | `km.stage.graph_extraction.dlq` (168h) |
 | `km.stage.entity_resolution` | `km.stage.entity_resolution` | 5s/30s/2m | `km.stage.entity_resolution.dlq` (168h) |
 | `km.stage.graph_construction` | `km.stage.graph_construction` | 5s/30s/2m | `km.stage.graph_construction.dlq` (168h) |
 | `km.stage.community_detection` | `km.stage.community_detection` | 5s/30s/2m | `km.stage.community_detection.dlq` (168h) |
 | `km.stage.insights_generation` | `km.stage.insights_generation` | 5s/30s/2m | `km.stage.insights_generation.dlq` (168h) |
 
-Totals: 17 exchanges, 83 queues, 83 bindings (across all vhosts).
+Totals: 17 exchanges, 103 queues, 103 bindings (across all vhosts).
